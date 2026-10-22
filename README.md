@@ -293,6 +293,29 @@ Set **Manual chat save folder** to a vault-relative destination for Save as note
 | vLLM | `/v1/chat/completions` | SSE | `<think>` tags | `tools` parameter |
 | AnythingLLM | `/v1/openai/chat/completions` | SSE | `<think>` tags | `tools` parameter |
 
+### Troubleshooting Ollama tool responses
+
+If a tool runs but the answer stays empty, open Obsidian's developer console,
+enable the **Verbose** log level, and filter for `[llm-hub] Ollama`. Reproduce the
+request and include the following entries in a bug report:
+
+- **Ollama server**: server version, checked once per server per plugin session.
+- **Ollama request**: model, configured token limit, whether this is a tool
+  continuation, tool call count, and the character length of each tool result
+  included in the request.
+- **Ollama response**: finish reason, whether a terminal event arrived, text and
+  thinking character counts, tool call count, and token usage when provided.
+
+These diagnostics omit prompts, message and tool-result contents, and API keys.
+If version discovery reports `unavailable`, include the output of `ollama --version`.
+
+An empty response with finish reason `length` reached the output token limit;
+the plugin reports this immediately instead of retrying the same request.
+Increase **Max tokens** in the local LLM connection settings, or leave it blank
+to use the server default, and check the server's output limit. Thinking also
+uses the generation budget. Other empty tool continuations are attempted up
+to three times, with the finish reason included in the warning.
+
 ### Using Cloud LLMs (OpenAI, Gemini, etc.)
 
 The "LM Studio (OpenAI compatible)" framework works with any OpenAI-compatible API endpoint, including cloud services:

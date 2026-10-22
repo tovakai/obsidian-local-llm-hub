@@ -70,6 +70,7 @@ import {
 } from "./chat/chatHistory";
 import { withRequestedSkillPath, useSkillPathPersistence } from "./chat/contextSkills";
 import { buildNoDiscoverySystemPrompt } from "./chat/noDiscoveryPrompt";
+import { retryToolRound } from "./chat/toolContinuation";
 import MessageList from "./MessageList";
 import InputArea, { type InputAreaHandle } from "./InputArea";
 import { t } from "src/i18n";
@@ -890,6 +891,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             toolCalls: ToolCall[];
             incompleteToolCall: boolean;
             emptyText: boolean;
+            finishReason?: string;
           }> => {
             // Thinking is shown for the whole turn, so each round appends to what
             // the earlier rounds already said; the text starts over each round.
@@ -897,6 +899,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             const round = createStreamAccumulation();
             fullContent = "";
             currentRoundThinking = "";
+            let finishReason: string | undefined;
 
             for await (const chunk of localLlmChatStream(
               llmConfig,
@@ -911,6 +914,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
               }
 
               accumulateStreamChunk(round, chunk);
+              if (chunk.type === "done") finishReason = chunk.finishReason;
               fullContent = round.text;
               currentRoundThinking = round.thinking;
               thinkingContent = priorThinking + round.thinking;
@@ -930,28 +934,19 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
               toolCalls: round.toolCalls,
               incompleteToolCall: round.incompleteToolCall,
               emptyText: fullContent.trim().length === 0,
+              finishReason,
             };
           };
 
-          const streamOneRoundWithRetry = async (useTools: boolean, retryEmptyText = false): Promise<ToolCall[]> => {
-            const maxAttempts = 3;
-            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-              const result = await streamOneRound(useTools);
-              const shouldRetry =
-                result.toolCalls.length === 0 &&
-                (result.incompleteToolCall || (retryEmptyText && result.emptyText));
-              if (!shouldRetry) return result.toolCalls;
-              console.warn(`[llm-hub] Server returned an incomplete tool continuation; retrying round (${attempt}/${maxAttempts})`);
-            }
-            throw new Error("The server repeatedly returned an incomplete response after a tool result.");
-          };
+          const streamOneRoundWithRetry = (useTools: boolean, retryEmptyText = false): Promise<ToolCall[]> =>
+            retryToolRound(() => streamOneRound(useTools), retryEmptyText, abortController.signal);
 
           // First round - try with tools
           let pendingToolCalls: ToolCall[];
           try {
             pendingToolCalls = await streamOneRoundWithRetry(tools.length > 0);
           } catch (firstError) {
-            if (tools.length > 0) {
+            if (tools.length > 0 && firstError instanceof Error && /does not support tools|tools? (?:are |is )?not supported/i.test(firstError.message)) {
               // Tools not supported by this model - set mode to none and show notice
               new Notice(t("chat.toolsNotSupported"));
               setVaultToolMode("none");
