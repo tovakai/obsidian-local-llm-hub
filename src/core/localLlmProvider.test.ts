@@ -13,6 +13,7 @@ vi.mock("obsidian-llm-hub-common/core", async importOriginal => ({
 
 import { fetchEmbeddingModels, localLlmChatStream } from "./localLlmProvider";
 import type { LocalLlmConfig, Message, ToolDefinition } from "../types";
+import type { OllamaRequestWriter } from "./ollamaRequestCapture";
 
 const config: LocalLlmConfig = {
   framework: "ollama",
@@ -67,9 +68,9 @@ describe("Ollama continuation diagnostics", () => {
     { role: "tool", content: "private journal metadata", toolCallId: "call1", toolName: "crossref_search_journals", timestamp: 2 },
   ];
   const chatConfig = { ...config, model: "qwen3:8b", maxTokens: 100, apiKey: "private-api-key" };
-  const collect = async (overrides: Partial<LocalLlmConfig> = {}, signal?: AbortSignal) => {
+  const collect = async (overrides: Partial<LocalLlmConfig> = {}, signal?: AbortSignal, writer?: OllamaRequestWriter) => {
     const chunks = [];
-    for await (const chunk of localLlmChatStream({ ...chatConfig, ...overrides }, messages, "private system prompt", signal, tools)) chunks.push(chunk);
+    for await (const chunk of localLlmChatStream({ ...chatConfig, ...overrides }, messages, "private system prompt", signal, tools, writer)) chunks.push(chunk);
     return chunks;
   };
   function respond(...values: unknown[]) {
@@ -168,5 +169,47 @@ describe("Ollama continuation diagnostics", () => {
     expect(await collect({ framework: "lm-studio" })).toEqual([{ type: "done" }]);
     expect(sharedChat).toHaveBeenCalledOnce();
     expect(streamLines).not.toHaveBeenCalled();
+  });
+
+  it("does not capture request contents unless explicitly enabled", async () => {
+    const writer = vi.fn();
+    respond({ message: { content: "Answer" }, done: true });
+    await collect({}, undefined, writer);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("captures the exact body before transport, without connection credentials", async () => {
+    const writer = vi.fn().mockResolvedValue(undefined);
+    streamLines.mockImplementation(async function* () {
+      expect(writer).toHaveBeenCalledOnce();
+      yield JSON.stringify({ message: { content: "Answer" }, done: true });
+    });
+    await collect({ captureOllamaRequests: true }, undefined, writer);
+    const capture = writer.mock.calls[0][0];
+    expect(capture.body).toBe(streamLines.mock.calls[0][0].body);
+    expect(capture.body).toContain("private system prompt");
+    expect(capture.body).toContain("private journal metadata");
+    expect(JSON.stringify(capture)).not.toContain("private-api-key");
+    expect(console.debug).toHaveBeenCalledWith("[llm-hub] Ollama request", expect.objectContaining({ requestId: capture.requestId }));
+    expect(console.debug).toHaveBeenCalledWith("[llm-hub] Ollama first response line", expect.objectContaining({ requestId: capture.requestId, elapsedMs: expect.any(Number) }));
+    expect(console.debug).toHaveBeenCalledWith("[llm-hub] Ollama response", expect.objectContaining({ requestId: capture.requestId, elapsedMs: expect.any(Number) }));
+    expect(JSON.stringify(vi.mocked(console.debug).mock.calls)).not.toContain("private");
+  });
+
+  it("continues generation if capture fails without logging sensitive errors", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    respond({ message: { content: "Answer" }, done: true });
+    const writer = vi.fn().mockRejectedValue(new Error("private file content"));
+    expect((await collect({ captureOllamaRequests: true }, undefined, writer)).at(-1)).toMatchObject({ type: "done" });
+    expect(warn).toHaveBeenCalledWith("[llm-hub] Ollama request capture failed", { requestId: expect.any(String) });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("private");
+  });
+
+  it("uses a different capture file identifier for each round", async () => {
+    const writer = vi.fn().mockResolvedValue(undefined);
+    respond({ done: true });
+    await collect({ captureOllamaRequests: true }, undefined, writer);
+    await collect({ captureOllamaRequests: true }, undefined, writer);
+    expect(writer.mock.calls[0][0].requestId).not.toBe(writer.mock.calls[1][0].requestId);
   });
 });

@@ -25,6 +25,7 @@ export interface LocalLlmConfig {
   temperature?: number;         // 0.0-2.0 (undefined = server default)
   maxTokens?: number;           // Max response tokens (undefined = server default)
   streamIdleTimeoutSeconds?: number; // Seconds without streamed data before aborting (undefined = 120)
+  captureOllamaRequests?: boolean; // Opt-in full request capture for chat diagnostics
   pdfInputMode?: PdfInputMode;  // auto defaults to extracted text for local servers
 }
 

@@ -211,6 +211,15 @@ export class LocalLlmModal extends Modal {
         text.inputEl.step = "1";
       });
 
+    if (this.config.framework === "ollama") {
+      new Setting(contentEl)
+        .setName(t("settings.llmModal.captureOllamaRequests"))
+        .setDesc(t("settings.llmModal.captureOllamaRequestsDesc"))
+        .addToggle(toggle => toggle
+          .setValue(this.config.captureOllamaRequests ?? false)
+          .onChange(value => { this.config.captureOllamaRequests = value; }));
+    }
+
     // Save / Cancel
     new Setting(contentEl)
       .addButton((btn) =>

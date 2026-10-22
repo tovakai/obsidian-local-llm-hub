@@ -64,6 +64,8 @@ export const en = {
   "settings.llmModal.maxTokensDesc": "Maximum response tokens. Leave empty for server default.",
   "settings.llmModal.streamIdleTimeout": "Stream idle timeout (seconds)",
   "settings.llmModal.streamIdleTimeoutDesc": "Stop the request when the server sends no streaming data for this many seconds. Leave empty for 120 seconds. Large prompts may need a longer timeout.",
+  "settings.llmModal.captureOllamaRequests": "Save chat requests for diagnosis",
+  "settings.llmModal.captureOllamaRequestsDesc": "Off by default. Saves each chat request as JSON in this plugin's diagnostics folder, including full conversations, system prompts, tool results, and attachments. Connection headers and the configured API key are excluded; secrets within message content are included. The console shows the file path. Disable after testing and delete the files when finished; review contents before sharing.",
   "settings.llmModal.serverDefault": "Server default",
   "settings.llmModal.apiKeyDescAnythingllm": "API key from AnythingLLM developer settings",
   "settings.ragEmbeddingModelPlaceholder": "Fetch models first",

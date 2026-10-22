@@ -12,6 +12,7 @@
 
 import { requestUrl } from "obsidian";
 import type { Message, StreamChunk, LocalLlmConfig, ToolDefinition } from "../types";
+import type { OllamaRequestWriter } from "./ollamaRequestCapture";
 import {
   runLocalLlmChat,
   fetchChatModels as fetchChatModelsShared,
@@ -28,6 +29,7 @@ import {
 export type LocalLlmStreamChunk = StreamChunk & { finishReason?: string };
 
 const versionChecks = new Set<string>();
+let requestSequence = 0;
 
 /** Best effort only: version discovery must never hold up generation. */
 function logOllamaVersion(config: LocalLlmConfig): void {
@@ -108,6 +110,7 @@ export async function* localLlmChatStream(
   systemPrompt: string,
   signal?: AbortSignal,
   tools?: ToolDefinition[],
+  writeRequest?: OllamaRequestWriter,
 ): AsyncGenerator<LocalLlmStreamChunk> {
   if (config.framework !== "ollama") {
     yield* runLocalLlmChat({ config, messages, systemPrompt, signal, tools });
@@ -119,9 +122,20 @@ export async function* localLlmChatStream(
   // native terminal reason, which the shared parser currently discards.
   try {
     const request = buildLocalLlmRequest({ config, messages, systemPrompt, tools });
+    const requestId = `${Date.now()}-${++requestSequence}`;
+    if (config.captureOllamaRequests && writeRequest) {
+      try {
+        await writeRequest({ requestId, body: request.body });
+      } catch {
+        console.warn("[llm-hub] Ollama request capture failed", { requestId });
+      }
+    }
+    if (signal?.aborted) return;
+    const startedAt = Date.now();
     const wireMessages = buildOllamaMessages(messages, systemPrompt);
     const toolResults = wireMessages.filter(message => message.role === "tool");
     console.debug("[llm-hub] Ollama request", {
+      requestId,
       model: config.model,
       continuation: messages.at(-1)?.role === "tool",
       maxTokens: config.maxTokens ?? "server default",
@@ -158,6 +172,7 @@ export async function* localLlmChatStream(
             }
           }
           console.debug("[llm-hub] Ollama response", {
+            requestId, elapsedMs: Date.now() - startedAt,
             model: config.model, finishReason: finishReason ?? "unknown", terminalReceived,
             textChars: text.length, thinkingChars, toolCallCount, usage: chunk.usage,
           });
@@ -165,9 +180,14 @@ export async function* localLlmChatStream(
         } else yield chunk;
       }
     };
+    let firstLineReceived = false;
     for await (const line of streamLocalLlmLines({
       ...request, signal, idleTimeoutMs: getStreamIdleTimeoutMs(config),
     })) {
+      if (!firstLineReceived) {
+        firstLineReceived = true;
+        console.debug("[llm-hub] Ollama first response line", { requestId, elapsedMs: Date.now() - startedAt });
+      }
       if (parser.done) continue;
       try {
         const value: unknown = JSON.parse(line);

@@ -309,6 +309,43 @@ request and include the following entries in a bug report:
 These diagnostics omit prompts, message and tool-result contents, and API keys.
 If version discovery reports `unavailable`, include the output of `ollama --version`.
 
+For an exact replay of a stalled chat request, edit the Ollama connection and
+enable **Save chat requests for diagnosis**. Start a new chat and reproduce
+the problem. Each round (including retries and tool continuations) saves the exact
+JSON request body before sending it, under
+`.obsidian/plugins/local-llm-hub/diagnostics/` (or your custom plugin directory).
+Enable **Verbose** in the developer console and look for
+`[llm-hub] Ollama request saved` to find the file. The `requestId` links the file to
+the request, first response line, and final response logs; the latter two also
+report elapsed milliseconds since sending began. Files remain available even if
+generation never completes. A save failure is logged and generation continues.
+
+**Full request capture is off by default.** Unlike the metadata logs above, these
+files include full prompts, conversations, tool definitions, tool results, and
+any attachment data sent to Ollama. Connection URLs, headers, and the configured
+API key are not saved, but secrets already present in conversation or tool content
+will be included. Review files before sharing, disable capture after diagnosis,
+and delete the files manually when finished. The hidden plugin folder may still
+be included in vault backups or sync.
+
+Stop the pending chat before replaying to avoid queueing behind it. From a terminal
+that can reach the same Ollama server, send the saved file without editing its
+contents (replace the filename and URL as needed):
+
+```bash
+curl -N http://localhost:11434/api/chat \
+  -H 'Content-Type: application/json' \
+  --data-binary @ollama-REQUEST-ID.json
+```
+
+On Windows PowerShell, use `curl.exe` instead of `curl`. Copy the file to the
+terminal's working directory first, or supply its full path. If your server
+requires authentication, provide it separately. This replays model generation
+only; it does not execute any tools the model requests. Compare whether the
+replay returns a `tool_calls` event or answer, and the final `done_reason`, against
+the plugin's result. A successful replay alone does not establish the original
+failure's cause.
+
 An empty response with finish reason `length` reached the output token limit;
 the plugin reports this immediately instead of retrying the same request.
 Increase **Max tokens** in the local LLM connection settings, or leave it blank

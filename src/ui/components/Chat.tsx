@@ -71,6 +71,7 @@ import {
 import { withRequestedSkillPath, useSkillPathPersistence } from "./chat/contextSkills";
 import { buildNoDiscoverySystemPrompt } from "./chat/noDiscoveryPrompt";
 import { retryToolRound } from "./chat/toolContinuation";
+import { createOllamaRequestWriter } from "../../core/ollamaRequestCapture";
 import MessageList from "./MessageList";
 import InputArea, { type InputAreaHandle } from "./InputArea";
 import { t } from "src/i18n";
@@ -907,6 +908,9 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
               systemPrompt,
               abortController.signal,
               useTools && tools.length > 0 ? tools : undefined,
+              plugin.manifest.dir
+                ? createOllamaRequestWriter(plugin.app.vault.adapter, plugin.manifest.dir)
+                : undefined,
             )) {
               if (abortController.signal.aborted) {
                 stopped = true;

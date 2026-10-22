@@ -60,6 +60,8 @@ export const ja: Record<string, string> = {
   "settings.llmModal.maxTokensDesc": "応答の最大トークン数。空欄でサーバーデフォルト。",
   "settings.llmModal.streamIdleTimeout": "ストリーム待機タイムアウト（秒）",
   "settings.llmModal.streamIdleTimeoutDesc": "サーバーからストリームデータが届かない状態で待機する秒数。空欄の場合は120秒です。大きなプロンプトでは長めに設定してください。",
+  "settings.llmModal.captureOllamaRequests": "診断用にOllamaのチャットリクエストを保存",
+  "settings.llmModal.captureOllamaRequestsDesc": "初期状態はオフです。会話全文・システムプロンプト・ツール結果・添付データを含む各リクエストを、このプラグインのdiagnosticsフォルダにJSONで保存します。接続ヘッダーと接続設定のAPIキーは含めませんが、会話内の機密情報は含まれます。保存先はコンソールに表示します。テスト後はオフにしてファイルを削除し、共有前に内容を確認してください。",
   "settings.llmModal.serverDefault": "サーバーデフォルト",
   "settings.llmModal.apiKeyDescAnythingllm": "AnythingLLMの開発者設定から取得したAPIキー",
   "settings.ragEmbeddingModelPlaceholder": "先にモデルを取得してください",
