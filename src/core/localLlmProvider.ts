@@ -122,6 +122,14 @@ export async function* localLlmChatStream(
   // native terminal reason, which the shared parser currently discards.
   try {
     const request = buildLocalLlmRequest({ config, messages, systemPrompt, tools });
+    // Ollama defaults are preserved when this optional setting is absent or "default".
+    // Rewrite the shared builder's body before both diagnostics and transport so
+    // initial requests and every tool-result continuation use the same mode.
+    if (config.ollamaThinking === "off" || config.ollamaThinking === "on") {
+      const body = JSON.parse(request.body) as Record<string, unknown>;
+      body.think = config.ollamaThinking === "on";
+      request.body = JSON.stringify(body);
+    }
     const requestId = `${Date.now()}-${++requestSequence}`;
     if (config.captureOllamaRequests && writeRequest) {
       try {

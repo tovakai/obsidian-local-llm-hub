@@ -15,6 +15,7 @@ import type { VaultToolMode } from "obsidian-llm-hub-common/core";
 export type { VaultToolMode };
 // "auto" is a legacy value kept for stored configs; it behaves like "extract-text".
 export type PdfInputMode = "auto" | "native" | "extract-text";
+export type OllamaThinkingMode = "default" | "off" | "on";
 
 // Local LLM configuration (OpenAI-compatible API)
 export interface LocalLlmConfig {
@@ -25,6 +26,7 @@ export interface LocalLlmConfig {
   temperature?: number;         // 0.0-2.0 (undefined = server default)
   maxTokens?: number;           // Max response tokens (undefined = server default)
   streamIdleTimeoutSeconds?: number; // Seconds without streamed data before aborting (undefined = 120)
+  ollamaThinking?: OllamaThinkingMode; // default = omit think; off/on = explicitly control Ollama thinking
   captureOllamaRequests?: boolean; // Opt-in full request capture for chat diagnostics
   pdfInputMode?: PdfInputMode;  // auto defaults to extracted text for local servers
 }

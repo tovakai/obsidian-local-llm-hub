@@ -213,6 +213,16 @@ export class LocalLlmModal extends Modal {
 
     if (this.config.framework === "ollama") {
       new Setting(contentEl)
+        .setName(t("settings.llmModal.ollamaThinking"))
+        .setDesc(t("settings.llmModal.ollamaThinkingDesc"))
+        .addDropdown(dropdown => dropdown
+          .addOption("default", t("settings.llmModal.ollamaThinkingDefault"))
+          .addOption("off", t("settings.llmModal.ollamaThinkingOff"))
+          .addOption("on", t("settings.llmModal.ollamaThinkingOn"))
+          .setValue(this.config.ollamaThinking ?? "default")
+          .onChange(value => { this.config.ollamaThinking = value as "default" | "off" | "on"; }));
+
+      new Setting(contentEl)
         .setName(t("settings.llmModal.captureOllamaRequests"))
         .setDesc(t("settings.llmModal.captureOllamaRequestsDesc"))
         .addToggle(toggle => toggle

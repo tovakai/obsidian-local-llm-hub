@@ -258,6 +258,10 @@ You can also enable **Use external index** and enter one external index director
 
 ![RAG Settings](docs/images/setting_rag_and_command.png)
 
+### Ollama Thinking Mode
+
+In **Settings → Local LLM → Configure**, set **Ollama thinking mode** to **Default**, **Off**, or **On**. Default preserves the model/server behavior; Off and On explicitly send `think: false` and `think: true` to Ollama for every chat request, including tool-result continuations. This setting is stored with the current LLM profile and only affects the Ollama backend.
+
 ### MCP Server Setup
 
 1. Settings → **MCP servers** → **Add server**
