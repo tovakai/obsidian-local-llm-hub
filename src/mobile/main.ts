@@ -1,0 +1,199 @@
+import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, requestUrl } from "obsidian";
+
+type Role = "user" | "assistant";
+type Message = { role: Role; content: string };
+type Thinking = "default" | "off" | "on";
+type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; history: Message[] };
+const VIEW = "mabel-mobile-chat";
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, history: [] };
+
+class MobileChat extends ItemView {
+  private transcript!: HTMLElement;
+  private entry!: HTMLTextAreaElement;
+  private submit!: HTMLButtonElement;
+  private busy = false;
+
+  constructor(leaf: WorkspaceLeaf, private readonly plugin: MabelMobilePlugin) { super(leaf); }
+  getViewType(): string { return VIEW; }
+  getDisplayText(): string { return "Mabel Mobile"; }
+  getIcon(): string { return "bot"; }
+
+  async onOpen(): Promise<void> {
+    const root = this.containerEl.children[1] as HTMLElement;
+    root.empty();
+    root.addClass("mabel-mobile");
+    const header = root.createDiv({ cls: "mabel-mobile-header" });
+    header.createEl("h3", { text: "Mabel" });
+    header.createEl("button", { text: "New chat" }).addEventListener("click", () => {
+      if (!this.busy) void this.plugin.clearHistory().then(() => this.renderMessages());
+    });
+    this.transcript = root.createDiv({ cls: "mabel-mobile-transcript" });
+    this.renderMessages();
+    const composer = root.createDiv({ cls: "mabel-mobile-composer" });
+    this.entry = composer.createEl("textarea", { attr: { rows: "3", placeholder: "Talk to Mabel…", "aria-label": "Message" } });
+    this.entry.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); void this.send(); }
+    });
+    this.submit = composer.createEl("button", { text: "Send", cls: "mod-cta" });
+    this.submit.addEventListener("click", () => { void this.send(); });
+  }
+
+  private renderMessages(): void {
+    this.transcript.empty();
+    if (!this.plugin.settings.history.length) {
+      this.transcript.createDiv({ cls: "mabel-mobile-empty", text: "Mabel's brain lives on your desktop. Connect through Tailscale to begin." });
+    } else {
+      this.plugin.settings.history.forEach(message => this.appendMessage(message));
+    }
+  }
+
+  private appendMessage(message: Message): void {
+    this.transcript.querySelector(".mabel-mobile-empty")?.remove();
+    const bubble = this.transcript.createDiv({ cls: "mabel-mobile-bubble mabel-mobile-" + message.role });
+    bubble.createDiv({ cls: "mabel-mobile-author", text: message.role === "user" ? "You" : "Mabel" });
+    const content = bubble.createDiv();
+    void MarkdownRenderer.render(this.app, message.content, content, "", this)
+      .catch(() => content.setText(message.content));
+    this.transcript.scrollTop = this.transcript.scrollHeight;
+  }
+
+  private async send(): Promise<void> {
+    const text = this.entry.value.trim();
+    if (!text || this.busy) return;
+    if (!this.plugin.settings.baseUrl || !this.plugin.settings.model) {
+      new Notice("Configure the Ollama URL and model in Mabel Mobile settings.");
+      return;
+    }
+    this.busy = true;
+    this.submit.disabled = true;
+    this.submit.setText("Thinking…");
+    this.entry.value = "";
+    const prior = this.plugin.settings.history.slice();
+    const user: Message = { role: "user", content: text };
+    this.appendMessage(user);
+    try {
+      const reply: Message = { role: "assistant", content: await this.plugin.answer(prior, text) };
+      this.appendMessage(reply);
+      await this.plugin.addHistory(user, reply);
+    } catch (error) {
+      this.transcript.createDiv({ cls: "mabel-mobile-error", text: "Request failed: " + String(error) });
+    } finally {
+      this.busy = false;
+      this.submit.disabled = false;
+      this.submit.setText("Send");
+    }
+  }
+}
+
+class MobileSettingsTab extends PluginSettingTab {
+  constructor(app: MabelMobilePlugin["app"], private readonly plugin: MabelMobilePlugin) { super(app, plugin); }
+
+  display(): void {
+    const root = this.containerEl;
+    root.empty();
+    root.createEl("h2", { text: "Mabel Mobile" });
+    root.createEl("p", { text: "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel." });
+    new Setting(root).setName("Ollama URL")
+      .setDesc("Example: https://desktop.tailnet.ts.net (without /api/chat)")
+      .addText(input => {
+        input.setPlaceholder("https://…").setValue(this.plugin.settings.baseUrl)
+          .onChange(async value => { this.plugin.settings.baseUrl = value.trim().replace(/\/+$/, ""); await this.plugin.saveSettings(); });
+        input.inputEl.addClass("mabel-mobile-wide");
+      });
+    new Setting(root).setName("Model")
+      .addText(input => input.setValue(this.plugin.settings.model)
+        .onChange(async value => { this.plugin.settings.model = value.trim(); await this.plugin.saveSettings(); }))
+      .addButton(btn => btn.setButtonText("Check models").onClick(async () => {
+        try {
+          const names = await this.plugin.listModels();
+          new Notice(names.length ? names.join(", ") : "No Ollama models returned.");
+        } catch (error) { new Notice("Could not list models: " + String(error)); }
+      }));
+    new Setting(root).setName("Thinking mode")
+      .addDropdown(dropdown => dropdown.addOption("default", "Model default").addOption("off", "Off").addOption("on", "On")
+        .setValue(this.plugin.settings.thinking)
+        .onChange(async value => { this.plugin.settings.thinking = value as Thinking; await this.plugin.saveSettings(); }));
+    new Setting(root).setName("Reuse desktop persona")
+      .setDesc("Read the system prompt from the desktop Local LLM Hub settings if that file is synced to this vault.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.reuseDesktopPrompt)
+        .onChange(async value => { this.plugin.settings.reuseDesktopPrompt = value; await this.plugin.saveSettings(); }));
+    new Setting(root).setName("Fallback system prompt")
+      .setDesc("Used if desktop settings are unavailable.")
+      .addTextArea(input => {
+        input.setValue(this.plugin.settings.systemPrompt)
+          .onChange(async value => { this.plugin.settings.systemPrompt = value; await this.plugin.saveSettings(); });
+        input.inputEl.addClass("mabel-mobile-prompt");
+      });
+  }
+}
+
+export default class MabelMobilePlugin extends Plugin {
+  settings: MobileSettings = { ...defaults };
+
+  async onload(): Promise<void> {
+    const stored = await this.loadData() as Partial<MobileSettings> | null;
+    this.settings = { ...defaults, ...stored, history: Array.isArray(stored?.history) ? stored.history : [] };
+    this.registerView(VIEW, leaf => new MobileChat(leaf, this));
+    this.addRibbonIcon("bot", "Open Mabel Mobile", () => { void this.openChat(); });
+    this.addCommand({ id: "open-chat", name: "Open Mabel Mobile", callback: () => { void this.openChat(); } });
+    this.addSettingTab(new MobileSettingsTab(this.app, this));
+  }
+
+  onunload(): void { this.app.workspace.detachLeavesOfType(VIEW); }
+
+  async openChat(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(VIEW)[0];
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({ type: VIEW, active: true });
+    }
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  async saveSettings(): Promise<void> { await this.saveData(this.settings); }
+  async clearHistory(): Promise<void> { this.settings.history = []; await this.saveSettings(); }
+  async addHistory(user: Message, assistant: Message): Promise<void> {
+    this.settings.history = [...this.settings.history, user, assistant].slice(-60);
+    await this.saveSettings();
+  }
+
+  private async desktopSystemPrompt(): Promise<string | undefined> {
+    if (!this.settings.reuseDesktopPrompt) return undefined;
+    try {
+      const path = this.app.vault.configDir + "/plugins/local-llm-hub/data.json";
+      if (!await this.app.vault.adapter.exists(path)) return undefined;
+      const data: unknown = JSON.parse(await this.app.vault.adapter.read(path));
+      if (data && typeof data === "object" && "systemPrompt" in data && typeof data.systemPrompt === "string") {
+        return data.systemPrompt;
+      }
+    } catch { /* Settings may not be synced to the phone. */ }
+    return undefined;
+  }
+
+  async listModels(): Promise<string[]> {
+    if (!this.settings.baseUrl) throw new Error("Configure the Ollama URL first.");
+    const response = await requestUrl({ url: this.settings.baseUrl + "/api/tags", method: "GET" });
+    const json = response.json as { models?: Array<{ name?: string }> };
+    return json.models?.map(model => model.name).filter((name): name is string => !!name) ?? [];
+  }
+
+  async answer(prior: Message[], question: string): Promise<string> {
+    const systemPrompt = await this.desktopSystemPrompt() || this.settings.systemPrompt;
+    const messages: Array<{ role: "system" | Role; content: string }> = [];
+    if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+    messages.push(...prior, { role: "user", content: question });
+    const payload: { model: string; messages: typeof messages; stream: boolean; think?: boolean } = {
+      model: this.settings.model, messages, stream: false,
+    };
+    if (this.settings.thinking !== "default") payload.think = this.settings.thinking === "on";
+    const response = await requestUrl({
+      url: this.settings.baseUrl + "/api/chat",
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify(payload),
+    });
+    const json = response.json as { message?: { content?: string } };
+    if (!json.message?.content?.trim()) throw new Error("Ollama returned an empty response.");
+    return json.message.content;
+  }
+}
