@@ -81,7 +81,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
       setDraft(next);
       setDateInput(dateText);
       setEditing(null);
-      setError("Review this proposed task and click Save schedule to approve it.");
+      setError("");
       setIsCreating(true);
     };
     plugin.settingsEmitter.on("schedule-draft", onProposed);
