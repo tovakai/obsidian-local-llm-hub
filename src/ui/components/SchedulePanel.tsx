@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Clock3, Plus, Pencil, Play, Pause, Trash2, Sparkles, Bell, BrainCircuit, FileText, X, Check, AlertCircle, Repeat2 } from "lucide-react";
+import { CalendarClock, Clock3, Plus, Pencil, Play, Pause, Trash2, Sparkles, Bell, BrainCircuit, FileText, X, Check, AlertCircle, Repeat2, ShieldCheck, Terminal } from "lucide-react";
 import { Notice } from "obsidian";
 import type { LocalLlmHubPlugin } from "../../plugin";
 import type { ScheduledTask, ScheduleKind, ScheduleRepeat, TaskDraft } from "../../core/scheduler";
@@ -18,6 +18,8 @@ function newDraft(): TaskDraft {
     kind: "reminder",
     repeat: "once",
     intervalMinutes: 60,
+    allowTools: false,
+    allowMcpTools: false,
     startsAt: Math.ceil((Date.now() + 60 * 60_000) / (5 * 60_000)) * (5 * 60_000),
   };
 }
@@ -76,6 +78,9 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
         repeat: ["daily", "weekly", "interval"].includes(String(proposal.repeat))
           ? proposal.repeat as ScheduleRepeat : "once",
         intervalMinutes: typeof proposal.intervalMinutes === "number" ? proposal.intervalMinutes : 60,
+        // Models may propose timing and instructions, but cannot grant their own permissions.
+        allowTools: false,
+        allowMcpTools: false,
         startsAt: parsed,
       };
       setDraft(next);
@@ -111,6 +116,8 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
       kind: task.kind,
       repeat: task.repeat,
       intervalMinutes: task.intervalMinutes,
+      allowTools: task.allowTools === true,
+      allowMcpTools: task.allowMcpTools === true,
       startsAt: task.startsAt,
     });
     setDateInput(localInput(task.startsAt));
@@ -210,10 +217,41 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
                 onChange={event => setDraft(v => ({ ...v, intervalMinutes: Number(event.target.value) }))} />
             </label>
           )}
+          {draft.kind === "prompt" && (
+            <div className="llm-hub-scheduler-permissions">
+              <div className="llm-hub-scheduler-permissions-title"><ShieldCheck size={15} /> Autonomy</div>
+              <label className="llm-hub-scheduler-permission">
+                <div>
+                  <strong>Allow unattended tools</strong>
+                  <span>Let Mabel search, create, edit, rename and delete files within her configured vault access. No individual confirmation popups.</span>
+                </div>
+                <input type="checkbox" role="switch" checked={draft.allowTools === true}
+                  onChange={event => setDraft(v => ({
+                    ...v, allowTools: event.target.checked,
+                    allowMcpTools: event.target.checked ? v.allowMcpTools : false,
+                  }))} />
+              </label>
+              {draft.allowTools === true && (
+                <label className="llm-hub-scheduler-permission">
+                  <div>
+                    <strong><Terminal size={14} /> Allow connected MCP tools</strong>
+                    <span>Also allow enabled MCP integrations without interactive approval. Their tools may run commands, modify external data or access other systems.</span>
+                  </div>
+                  <input type="checkbox" role="switch" checked={draft.allowMcpTools === true}
+                    onChange={event => setDraft(v => ({ ...v, allowMcpTools: event.target.checked }))} />
+                </label>
+              )}
+              <div className="llm-hub-scheduler-permissions-note">
+                {draft.allowTools
+                  ? "This permission persists for every run until you turn it off. All tool calls are recorded in the task's run history."
+                  : "Both switches are off by default. The model will only generate and save a text response."}
+              </div>
+            </div>
+          )}
           <div className="llm-hub-scheduler-hint">
             <AlertCircle size={14} />
             <span>{draft.kind === "prompt"
-              ? "Runs the configured local model and saves the response to the vault. Scheduled prompts cannot call tools or edit existing notes."
+              ? draft.allowTools ? "Runs Mabel with the enabled tool permissions and stores an execution log in the vault." : "Runs Mabel without tools and saves the text response to the vault."
               : "Shows an Obsidian notification and saves a reminder record in the vault."}</span>
           </div>
           {error && <p className="llm-hub-scheduler-error" role="alert">{error}</p>}
@@ -250,6 +288,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           <p className="llm-hub-scheduler-prompt">{task.prompt}</p>
           <div className="llm-hub-scheduler-meta">
             <span><Clock3 size={13} /> {task.enabled ? when(task.nextRunAt) : "Not running"}</span>
+            {task.kind === "prompt" && task.allowTools === true && <span><ShieldCheck size={13} /> Vault tools{task.allowMcpTools === true ? " + MCP" : ""}</span>}
             {task.lastStatus && <span className={"llm-hub-scheduler-status is-" + task.lastStatus}>{task.lastStatus === "running" ? "Running..." : task.lastStatus === "success" ? "Last run succeeded" : "Last run failed"}</span>}
           </div>
           {task.lastStatus === "failed" && task.lastError && <div className="llm-hub-scheduler-run-error">{task.lastError}</div>}
