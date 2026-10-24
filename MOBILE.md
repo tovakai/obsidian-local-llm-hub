@@ -1,4 +1,4 @@
-# Mabel Mobile: experimental Android-first companion
+# Mabel Mobile v0.2.0: experimental Android-first companion
 
 This prototype lives in the same **fork** but has its own Obsidian plugin ID,
 `mabel-mobile`. It does **not** replace or modify Local LLM Hub on Windows/Linux.
@@ -25,8 +25,19 @@ This prototype lives in the same **fork** but has its own Obsidian plugin ID,
   phone's vault. Otherwise set the fallback system prompt manually.
 - Supports Default / Off / On via Ollama's native `think` parameter.
 - Optional **Include active note** adds up to 12,000 characters from the Markdown note active when the chat was opened. Note text is not saved in the mobile chat transcript.
-- **Not yet included:** vault tools, MCP tools, RAG, attachments,
+- **v0.2.0:** avatar upload with optional desktop-avatar inheritance, mobile safe-area fixes,
+  opt-in read-only note tools and experimental DuckDuckGo web search.
+- **Streaming:** first attempts browser fetch for progressive NDJSON. If Android's
+  CORS policy blocks the request, falls back to reliable buffered Obsidian requestUrl.
+  The Tailscale/Caddy proxy must allow the Android app origin for true streaming.
+  Tool-enabled first rounds are buffered so Ollama can return tool calls.
+- **Not yet included:** desktop MCP subprocess tools, RAG, attachments,
   shared desktop chat history, or workflows.
+- Enable the checkbox **Allow tools for this message** to let Mabel query mobile
+  read-only vault tools or search the web. Both can be disabled in plugin settings.
+  Search is best-effort: automated DuckDuckGo requests may be blocked.
+- Avatar image selection is in plugin settings. Mabel Mobile prefers the desktop
+  avatar from synced settings if **Reuse desktop avatar** is enabled.
 - This is a **proof of concept**, not a mobile port of the full plugin.
 - Never expose an unauthenticated Ollama server via Tailscale Funnel or
   public port forwarding. Tailscale Serve stays private to your tailnet.
