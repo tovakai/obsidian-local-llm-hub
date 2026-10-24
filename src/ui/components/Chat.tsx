@@ -1065,6 +1065,10 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
                   }
                   : await executeToolCall(tc, {
                   app: plugin.app,
+                  onProposeSchedule: async proposal => {
+                    plugin.settingsEmitter.emit("schedule-draft", proposal);
+                    await plugin.activateChatView("schedule");
+                  },
                   mcpManager: plugin.mcpManager,
                   vaultToolMode,
                   vaultToolAllowedFolders: plugin.settings.vaultToolAllowedFolders,
