@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, requestUrl } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
@@ -16,6 +16,7 @@ class MobileChat extends ItemView {
   private transcript!: HTMLElement;
   private entry!: HTMLTextAreaElement;
   private submit!: HTMLButtonElement;
+  private includeNote!: HTMLInputElement;
   private busy = false;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: MabelMobilePlugin) { super(leaf); }
@@ -39,6 +40,9 @@ class MobileChat extends ItemView {
     this.entry.addEventListener("keydown", event => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); void this.send(); }
     });
+    const noteLabel = composer.createEl("label");
+    this.includeNote = noteLabel.createEl("input", { type: "checkbox" });
+    noteLabel.appendText(" Include active note (read only)");
     this.submit = composer.createEl("button", { text: "Send", cls: "mod-cta" });
     this.submit.addEventListener("click", () => { void this.send(); });
     await Promise.resolve();
@@ -78,7 +82,7 @@ class MobileChat extends ItemView {
     const user: Message = { role: "user", content: text };
     this.appendMessage(user);
     try {
-      const reply: Message = { role: "assistant", content: await this.plugin.answer(prior, text) };
+      const reply: Message = { role: "assistant", content: await this.plugin.answer(prior, text, this.includeNote.checked) };
       this.appendMessage(reply);
       await this.plugin.addHistory(user, reply);
     } catch (error) {
@@ -135,6 +139,7 @@ class MobileSettingsTab extends PluginSettingTab {
 
 export default class MabelMobilePlugin extends Plugin {
   settings: MobileSettings = { ...defaults };
+  private lastNotePath: string | null = null;
 
   async onload(): Promise<void> {
     const stored = await this.loadData() as Partial<MobileSettings> | null;
@@ -146,6 +151,8 @@ export default class MabelMobilePlugin extends Plugin {
   }
 
   async openChat(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile?.extension === "md") this.lastNotePath = activeFile.path;
     let leaf = this.app.workspace.getLeavesOfType(VIEW)[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeaf(true);
@@ -181,11 +188,21 @@ export default class MabelMobilePlugin extends Plugin {
     return json.models?.map(model => model.name).filter((name): name is string => !!name) ?? [];
   }
 
-  async answer(prior: Message[], question: string): Promise<string> {
+  async answer(prior: Message[], question: string, includeActiveNote = false): Promise<string> {
     const systemPrompt = await this.desktopSystemPrompt() || this.settings.systemPrompt;
+    let userContent = question;
+    if (includeActiveNote) {
+      const path = this.lastNotePath;
+      const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
+      if (file instanceof TFile && file.extension === "md") {
+        const noteText = await this.app.vault.cachedRead(file);
+        userContent += "\n\n[Obsidian note: " + file.path + "]\n" + noteText.slice(0, 12000);
+        if (noteText.length > 12000) userContent += "\n[Note truncated]";
+      }
+    }
     const messages: Array<{ role: "system" | Role; content: string }> = [];
     if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-    messages.push(...prior, { role: "user", content: question });
+    messages.push(...prior, { role: "user", content: userContent });
     const payload: { model: string; messages: typeof messages; stream: boolean; think?: boolean } = {
       model: this.settings.model, messages, stream: false,
     };
