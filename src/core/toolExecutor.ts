@@ -99,7 +99,7 @@ export async function executeToolCall(
           return { success: false, result: "The schedule editor is unavailable." };
         }
         const fields = ["title", "prompt", "kind", "repeat", "startsAtLocal"] as const;
-        if (fields.some(key => typeof args[key] !== "string" || !(args[key] as string).trim())) {
+        if (fields.some(key => typeof args[key] !== "string" || !args[key].trim())) {
           return { success: false, result: "A title, prompt, kind, recurrence and exact local start time are required." };
         }
         if (!["reminder", "prompt"].includes(args.kind as string)
