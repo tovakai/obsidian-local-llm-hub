@@ -122,4 +122,29 @@ export function displayLlmSettings(containerEl: HTMLElement, ctx: SettingsContex
         }
       })();
     }));
+  new Setting(containerEl)
+    .setName("Mabel model tiers")
+    .setDesc("Choose the Ollama model for each chat tier. Unassigned tiers use the current default model.")
+    .setHeading();
+  const knownModels = [...new Set([
+    llmConfig.model,
+    ...plugin.settings.availableModels,
+    ...Object.values(plugin.settings.modelTiers ?? {}),
+  ].filter((model): model is string => typeof model === "string" && !!model.trim()))];
+  for (const tier of ["low", "medium", "high"] as const) {
+    const displayName = tier[0].toUpperCase() + tier.slice(1);
+    new Setting(containerEl)
+      .setName(displayName)
+      .setDesc("Model for " + displayName.toLowerCase() + " tier")
+      .addDropdown(dropdown => {
+        dropdown.addOption("", "Default model (" + (llmConfig.model || "not configured") + ")");
+        for (const model of knownModels) dropdown.addOption(model, model);
+        dropdown.setValue(plugin.settings.modelTiers?.[tier] ?? "")
+          .onChange(async model => {
+            plugin.settings.modelTiers = { ...(plugin.settings.modelTiers ?? {}), [tier]: model };
+            await plugin.saveSettings();
+          });
+      });
+  }
+
 }

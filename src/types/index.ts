@@ -15,6 +15,8 @@ import type { VaultToolMode } from "obsidian-llm-hub-common/core";
 export type { VaultToolMode };
 // "auto" is a legacy value kept for stored configs; it behaves like "extract-text".
 export type PdfInputMode = "auto" | "native" | "extract-text";
+import type { ModelTier, ModelTierAssignments } from "../modelTiers";
+
 export type OllamaThinkingMode = "default" | "off" | "on";
 
 // Local LLM configuration (OpenAI-compatible API)
@@ -209,6 +211,8 @@ export interface LocalLlmHubSettings {
   maxSavedChatHistories: number;
   manualChatSaveFolder: string;
   systemPrompt: string;
+  selectedModelTier?: ModelTier;
+  modelTiers?: ModelTierAssignments;
   loadUserProfile: boolean;
   assistantAvatar?: string; // Resized PNG data URL, shared with mobile companion
   voiceChat: VoiceChatSettings;
@@ -272,6 +276,8 @@ export const DEFAULT_SETTINGS: LocalLlmHubSettings = {
   maxSavedChatHistories: 100,
   manualChatSaveFolder: "",
   systemPrompt: "",
+  selectedModelTier: "medium",
+  modelTiers: {},
   loadUserProfile: true,
   voiceChat: { ...DEFAULT_VOICE_CHAT_SETTINGS },
   encryption: { ...DEFAULT_ENCRYPTION_SETTINGS },
