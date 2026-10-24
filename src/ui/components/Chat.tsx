@@ -126,6 +126,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   const [isSidebarWide, setIsSidebarWide] = useState(false);
 
   const [currentModel, setCurrentModel] = useState(plugin.settings.llmConfig.model);
+  const [assistantAvatar, setAssistantAvatar] = useState(plugin.settings.assistantAvatar);
   const [ragSettingNames, setRagSettingNames] = useState<string[]>(plugin.getRagSettingNames());
   const [selectedRagSetting, setSelectedRagSetting] = useState<string | null>(plugin.getSelectedRagSettingName());
   const [vaultToolMode, setVaultToolMode] = useState<VaultToolMode>(plugin.settings.vaultToolMode ?? "all");
@@ -233,6 +234,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
       refreshVaultFiles();
       // Sync model if changed externally (e.g. in settings)
       setCurrentModel(plugin.settings.llmConfig.model);
+      setAssistantAvatar(plugin.settings.assistantAvatar);
       // Sync RAG settings
       setRagSettingNames(plugin.getRagSettingNames());
       setSelectedRagSetting(plugin.getSelectedRagSettingName());
@@ -1192,6 +1194,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
         streamingThinking={streamingThinking}
         isLoading={isLoading}
         app={plugin.app}
+        assistantAvatar={assistantAvatar}
         skillsFolder={plugin.settings.skillsFolder}
         currentDashboard={currentDashboard ? {
           basename: currentDashboard.basename,

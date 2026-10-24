@@ -209,6 +209,7 @@ export interface LocalLlmHubSettings {
   maxSavedChatHistories: number;
   manualChatSaveFolder: string;
   systemPrompt: string;
+  assistantAvatar?: string; // Resized PNG data URL, shared with mobile companion
   voiceChat: VoiceChatSettings;
   encryption: EncryptionSettings;
   editHistory: EditHistorySettings;

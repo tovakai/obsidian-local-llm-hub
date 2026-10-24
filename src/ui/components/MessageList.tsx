@@ -11,6 +11,7 @@ interface MessageListProps {
   streamingThinking: string;
   isLoading: boolean;
   app: App;
+  assistantAvatar?: string;
   skillsFolder?: string;
   currentDashboard?: { basename: string; path: string } | null;
   onOpenDashboard?: () => void;
@@ -37,10 +38,10 @@ const MessageList = forwardRef<HTMLDivElement, MessageListProps>((props, ref) =>
       tips={[{ text: t("chat.welcomeThinking") }, { text: t("chat.welcomeNewChat") }]}
     />}
     renderMessage={(message) => <MessageBubble
-      message={message} app={props.app} skillsFolder={props.skillsFolder}
+      message={message} app={props.app} skillsFolder={props.skillsFolder} assistantAvatar={props.assistantAvatar}
 
     />}
-    renderStreamingMessage={message => <MessageBubble message={message} isStreaming app={props.app} skillsFolder={props.skillsFolder} />}
+    renderStreamingMessage={message => <MessageBubble message={message} isStreaming app={props.app} skillsFolder={props.skillsFolder} assistantAvatar={props.assistantAvatar} />}
   />
 ));
 export default MessageList;

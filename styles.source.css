@@ -2423,4 +2423,11 @@ body.llm-hub-hide-workspace-folder .nav-folder:has(> .nav-folder-title[data-path
   user-select: text;
 }
 
+
+/* Assistant avatar attached outside the shared message bubble. */
+.llm-hub-avatar-message { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.llm-hub-avatar-picture { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: 0 0 36px; }
+.llm-hub-avatar-message-body { flex: 1; min-width: 0; }
+.llm-hub-avatar-setting-preview { margin: 4px 0 8px; display: flex; min-height: 50px; align-items: center; }
+.llm-hub-avatar-preview-image { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; }
 /* @chat-ui-styles */
