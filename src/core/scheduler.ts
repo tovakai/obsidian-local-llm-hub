@@ -73,7 +73,7 @@ export function validateTask(draft: TaskDraft): TaskDraft {
 }
 
 function sanitizeHeading(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").replace(/[#\[\]*|]/g, "").trim();
+  return value.replace(/[\r\n]+/g, " ").replace(/#|\[|\]|\*|\|/g, "").trim();
 }
 
 export class ScheduledTaskManager {
