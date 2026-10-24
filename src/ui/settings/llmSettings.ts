@@ -124,7 +124,7 @@ export function displayLlmSettings(containerEl: HTMLElement, ctx: SettingsContex
     }));
   new Setting(containerEl)
     .setName("Mabel model tiers")
-    .setDesc("Choose the Ollama model for each chat tier. Unassigned tiers use the current default model.")
+    .setDesc("Choose the model for each chat tier. Unassigned tiers use the current default model.")
     .setHeading();
   const knownModels = [...new Set([
     llmConfig.model,
