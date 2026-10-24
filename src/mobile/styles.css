@@ -1,0 +1,22 @@
+.mabel-mobile { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
+.mabel-mobile-header { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-bottom:1px solid var(--background-modifier-border); flex-shrink:0; }
+.mabel-mobile-header h3 { margin:0; font-size:1.1rem; }
+.mabel-mobile-transcript { flex:1 1 0; min-height:0; overflow-y:auto; padding:12px 12px 20px; overscroll-behavior:contain; }
+.mabel-mobile-empty { opacity:.7; text-align:center; margin:12vh auto; max-width:24rem; }
+.mabel-mobile-row { display:flex; align-items:flex-start; gap:8px; margin:0 0 14px; min-width:0; }
+.mabel-mobile-row-user { justify-content:flex-end; }
+.mabel-mobile-avatar { width:34px; height:34px; flex:0 0 34px; border-radius:50%; object-fit:cover; }
+.mabel-mobile-avatar-fallback { display:grid; place-items:center; background:var(--interactive-accent); color:var(--text-on-accent); font-weight:700; }
+.mabel-mobile-bubble { padding:10px 12px; max-width:min(94%,45rem); min-width:0; border-radius:14px; background:var(--background-secondary); overflow-wrap:anywhere; }
+.mabel-mobile-user { background:var(--background-primary-alt); }
+.mabel-mobile-author { font-weight:700; font-size:.75rem; opacity:.7; margin-bottom:6px; }
+.mabel-mobile-bubble p:last-child { margin-bottom:0; }
+.mabel-mobile-composer { border-top:1px solid var(--background-modifier-border); padding:9px 12px calc(72px + env(safe-area-inset-bottom, 0px)); display:flex; flex-direction:column; gap:8px; flex-shrink:0; background:var(--background-primary); }
+.mabel-mobile-composer textarea { width:100%; resize:vertical; min-height:55px; max-height:24vh; }
+.mabel-mobile-composer button { align-self:flex-end; margin-right:4px; margin-bottom:5px; }
+.mabel-mobile-composer label { display:flex; align-items:center; gap:6px; font-size:.82rem; }
+.mabel-mobile-error { color:var(--text-error); padding:10px; }
+.mabel-mobile-wide { width:min(100%,24rem); }
+.mabel-mobile-prompt { width:100%; min-height:140px; }
+.mabel-mobile-avatar-preview { display:flex; align-items:center; min-height:56px; margin:8px 0; }
+.mabel-mobile-avatar-preview img { width:54px; height:54px; border-radius:50%; object-fit:cover; }
