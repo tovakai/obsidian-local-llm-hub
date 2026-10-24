@@ -239,7 +239,7 @@ class MobileSettingsTab extends PluginSettingTab {
           }));
     }
     new Setting(root).setName("Thinking effort")
-      .setDesc("Use the slider in chat: Off, Brief, Standard, or Deep. Named Ollama levels are used when supported; Brief is otherwise an advisory preference.");
+      .setDesc("Adjust effort with the chat slider. Built-in model levels are used where available; shorter thinking is otherwise a preference, not a hard limit.");
     const avatarPreview = root.createDiv({ cls: "mabel-mobile-avatar-preview" });
     const showAvatar = () => {
       avatarPreview.empty();
