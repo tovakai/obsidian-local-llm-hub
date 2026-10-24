@@ -17,7 +17,7 @@ await copyFile("src/mobile/styles.css", "mobile-dist/styles.css");
 await writeFile("mobile-dist/manifest.json", JSON.stringify({
   id: "mabel-mobile",
   name: "Mabel Mobile",
-  version: "0.5.0",
+  version: "0.6.0",
   minAppVersion: "1.13.0",
   description: "A mobile companion for a private remote Ollama assistant.",
   author: "tovakai",

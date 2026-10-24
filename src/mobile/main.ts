@@ -5,11 +5,12 @@ import { mobileToolDefinitions, executeMobileTool, type FunctionCall } from "./m
 import { appendConversation, migrateChatState, newConversation, type MobileConversation } from "./chatHistory";
 import { createUserProfileTemplate, getCoreUserContext, USER_PROFILE_PATH } from "../userContext";
 import { MODEL_TIERS, MODEL_TIER_LABELS, validModelTier, resolveTierModel, type ModelTier, type ModelTierAssignments } from "../modelTiers";
+import { getOllamaThinkingControl, THINKING_EFFORTS, THINKING_LABELS, parseThinkingEffort, type ThinkingEffort } from "../thinkingEffort";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; modelTiers: ModelTierAssignments; selectedModelTier: ModelTier; reuseDesktopModelTiers: boolean; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; loadUserProfile: boolean; writeMode: "readOnly" | "ask"; chats: MobileConversation[]; activeChatId: string };
+type MobileSettings = { baseUrl: string; model: string; modelTiers: ModelTierAssignments; selectedModelTier: ModelTier; reuseDesktopModelTiers: boolean; thinking: Thinking; thinkingEffort?: ThinkingEffort; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; loadUserProfile: boolean; writeMode: "readOnly" | "ask"; chats: MobileConversation[]; activeChatId: string };
 const VIEW = "mabel-mobile-chat";
 const TITLE = "Mabel";
 const OPEN_LABEL = "Open Mabel";
@@ -71,6 +72,19 @@ class MobileChat extends ItemView {
     const toolLabel = options.createEl("label");
     this.useTools = toolLabel.createEl("input", { type: "checkbox" });
     toolLabel.appendText(" Allow tools");
+    const thinkingRow = composer.createDiv({ cls: "mabel-mobile-thinking-effort" });
+    const thinkingName = thinkingRow.createEl("span", { text: "Thinking: " + THINKING_LABELS[parseThinkingEffort(this.plugin.settings.thinkingEffort, this.plugin.settings.thinking)] });
+    const slider = thinkingRow.createEl("input", {
+      type: "range",
+      attr: { min: "0", max: "3", step: "1", "aria-label": "Thinking effort" },
+    });
+    slider.value = String(THINKING_EFFORTS.indexOf(parseThinkingEffort(this.plugin.settings.thinkingEffort, this.plugin.settings.thinking)));
+    slider.addEventListener("input", () => {
+      const effort = THINKING_EFFORTS[Number(slider.value)] ?? "standard";
+      thinkingName.setText("Thinking: " + THINKING_LABELS[effort]);
+      this.plugin.settings.thinkingEffort = effort;
+      void this.plugin.saveSettings();
+    });
     const inputRow = composer.createDiv({ cls: "mabel-mobile-input-row" });
     this.entry = inputRow.createEl("textarea", { attr: { rows: "2", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
     this.entry.addEventListener("keydown", event => {
@@ -224,10 +238,8 @@ class MobileSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }));
     }
-    new Setting(root).setName("Thinking mode")
-      .addDropdown(dropdown => dropdown.addOption("default", "Model default").addOption("off", "Off").addOption("on", "On")
-        .setValue(this.plugin.settings.thinking)
-        .onChange(async value => { this.plugin.settings.thinking = value as Thinking; await this.plugin.saveSettings(); }));
+    new Setting(root).setName("Thinking effort")
+      .setDesc("Use the slider in chat: Off, Brief, Standard, or Deep. Named Ollama levels are used when supported; Brief is otherwise an advisory preference.");
     const avatarPreview = root.createDiv({ cls: "mabel-mobile-avatar-preview" });
     const showAvatar = () => {
       avatarPreview.empty();
@@ -317,7 +329,12 @@ export default class MabelMobilePlugin extends Plugin {
   async onload(): Promise<void> {
     const stored = await this.loadData() as (Partial<MobileSettings> & { history?: Message[] }) | null;
     const migration = migrateChatState(stored ?? {});
-    this.settings = { ...defaults, ...stored, selectedModelTier: validModelTier(stored?.selectedModelTier), chats: migration.chats, activeChatId: migration.activeChatId };
+    this.settings = {
+      ...defaults, ...stored,
+      selectedModelTier: validModelTier(stored?.selectedModelTier),
+      thinkingEffort: parseThinkingEffort(stored?.thinkingEffort, stored?.thinking),
+      chats: migration.chats, activeChatId: migration.activeChatId,
+    };
     // The legacy single transcript has been imported into the first conversation.
     delete (this.settings as Partial<MobileSettings> & { history?: Message[] }).history;
     if (migration.migrated) await this.saveSettings();
@@ -441,14 +458,18 @@ export default class MabelMobilePlugin extends Plugin {
       tool_name?: string;
       tool_calls?: FunctionCall[];
     };
+    const model = await this.resolveSelectedModel();
+    const thinking = await getOllamaThinkingControl(
+      this.settings.baseUrl, model, parseThinkingEffort(this.settings.thinkingEffort, this.settings.thinking),
+    );
+    systemPrompt += thinking.promptHint;
     const messages: WireMessage[] = [];
     if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
     messages.push(...prior);
     messages.push({ role: "user", content: userContent });
-    const payload: { model: string; messages: WireMessage[]; think?: boolean } = {
-      model: await this.resolveSelectedModel(), messages,
+    const payload: { model: string; messages: WireMessage[]; think: string | boolean } = {
+      model, messages, think: thinking.think,
     };
-    if (this.settings.thinking !== "default") payload.think = this.settings.thinking === "on";
 
     // Mobile tools are opt-in; model-initiated writes always require separate approval.
     const definitions = enableTools
