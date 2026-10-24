@@ -7,6 +7,13 @@ interface ToolRoundResult {
   finishReason?: string;
 }
 
+export class EmptyToolContinuationError extends Error {
+  constructor() {
+    super("The server repeatedly returned an incomplete response after a tool result. See the request/response diagnostics in the developer console for the finish reason and tool result sizes.");
+    this.name = "EmptyToolContinuationError";
+  }
+}
+
 export async function retryToolRound(
   streamRound: () => Promise<ToolRoundResult>,
   retryEmptyText = false,
@@ -30,5 +37,5 @@ export async function retryToolRound(
       retrying: attempt < maxAttempts,
     });
   }
-  throw new Error("The server repeatedly returned an incomplete response after a tool result. See the request/response diagnostics in the developer console for the finish reason and tool result sizes.");
+  throw new EmptyToolContinuationError();
 }

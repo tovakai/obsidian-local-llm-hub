@@ -13,7 +13,7 @@ export const USER_CONTEXT_TOOL: ToolDefinition = {
   type: "function",
   function: {
     name: USER_CONTEXT_TOOL_NAME,
-    description: "Read confirmed user profile, preferences and projects from curated Obsidian memory notes. Use when tailoring replies. Missing notes are not evidence of preferences.",
+    description: "Retrieve detailed user profile, preferences and projects only when the brief already in the system prompt is insufficient. For a broad personal overview, use the brief directly before calling this tool. Missing notes are not evidence of preferences.",
     parameters: {
       type: "object",
       properties: { topic: { type: "string", description: "Optional lookup topic, e.g. film, Linux or working style." } },
