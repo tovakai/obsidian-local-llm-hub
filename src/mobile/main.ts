@@ -1,19 +1,20 @@
-import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
+import { ItemView, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
 import { readAvatarImage } from "../avatarImage";
 import { streamOllama } from "./ollamaStream";
 import { mobileToolDefinitions, executeMobileTool, type FunctionCall } from "./mobileTools";
+import { appendConversation, migrateChatState, newConversation, type MobileConversation } from "./chatHistory";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; history: Message[] };
+type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; chats: MobileConversation[]; activeChatId: string };
 const VIEW = "mabel-mobile-chat";
 const TITLE = "Mabel Mobile";
 const OPEN_LABEL = "Open Mabel Mobile";
 const TALK_PLACEHOLDER = "Talk to Mabel…";
 const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
 const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
-const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, history: [] };
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, chats: [], activeChatId: "" };
 
 class MobileChat extends ItemView {
   private transcript!: HTMLElement;
@@ -23,6 +24,9 @@ class MobileChat extends ItemView {
   private useTools!: HTMLInputElement;
   private avatar: string | undefined;
   private busy = false;
+
+  isBusy(): boolean { return this.busy; }
+  refreshConversation(): void { if (!this.busy) this.renderMessages(); }
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: MabelMobilePlugin) { super(leaf); }
   getViewType(): string { return VIEW; }
@@ -35,34 +39,40 @@ class MobileChat extends ItemView {
     root.addClass("mabel-mobile");
     const header = root.createDiv({ cls: "mabel-mobile-header" });
     header.createEl("h3", { text: "Mabel" });
-    header.createEl("button", { text: "New chat" }).addEventListener("click", () => {
-      if (!this.busy) void this.plugin.clearHistory().then(() => this.renderMessages());
+    const actions = header.createDiv({ cls: "mabel-mobile-header-actions" });
+    actions.createEl("button", { text: "History" }).addEventListener("click", () => {
+      if (!this.busy) new MobileHistoryModal(this.app, this.plugin).open();
+    });
+    actions.createEl("button", { text: "New chat" }).addEventListener("click", () => {
+      if (!this.busy) void this.plugin.startNewChat();
     });
     this.transcript = root.createDiv({ cls: "mabel-mobile-transcript" });
     this.avatar = await this.plugin.resolveAvatar();
     this.renderMessages();
     const composer = root.createDiv({ cls: "mabel-mobile-composer" });
-    this.entry = composer.createEl("textarea", { attr: { rows: "3", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
+    const options = composer.createDiv({ cls: "mabel-mobile-options" });
+    const noteLabel = options.createEl("label");
+    this.includeNote = noteLabel.createEl("input", { type: "checkbox" });
+    noteLabel.appendText(" Include active note");
+    const toolLabel = options.createEl("label");
+    this.useTools = toolLabel.createEl("input", { type: "checkbox" });
+    toolLabel.appendText(" Allow read-only tools");
+    const inputRow = composer.createDiv({ cls: "mabel-mobile-input-row" });
+    this.entry = inputRow.createEl("textarea", { attr: { rows: "2", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
     this.entry.addEventListener("keydown", event => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); void this.send(); }
     });
-    const noteLabel = composer.createEl("label");
-    this.includeNote = noteLabel.createEl("input", { type: "checkbox" });
-    noteLabel.appendText(" Include active note (read only)");
-    const toolLabel = composer.createEl("label");
-    this.useTools = toolLabel.createEl("input", { type: "checkbox" });
-    toolLabel.appendText(" Allow tools for this message (read-only vault / web)");
-    this.submit = composer.createEl("button", { text: "Send", cls: "mod-cta" });
+    this.submit = inputRow.createEl("button", { text: "Send", cls: "mod-cta" });
     this.submit.addEventListener("click", () => { void this.send(); });
     await Promise.resolve();
   }
 
   private renderMessages(): void {
     this.transcript.empty();
-    if (!this.plugin.settings.history.length) {
+    if (!this.plugin.getActiveMessages().length) {
       this.transcript.createDiv({ cls: "mabel-mobile-empty", text: "Mabel's brain lives on your desktop. Connect through Tailscale to begin." });
     } else {
-      this.plugin.settings.history.forEach(message => this.appendMessage(message));
+      this.plugin.getActiveMessages().forEach(message => this.appendMessage(message));
     }
   }
 
@@ -71,7 +81,7 @@ class MobileChat extends ItemView {
     this.renderMessages();
   }
 
-  private appendMessage(message: Message): HTMLElement {
+  private appendMessage(message: Message, plain = false): HTMLElement {
     this.transcript.querySelector(".mabel-mobile-empty")?.remove();
     const row = this.transcript.createDiv({ cls: "mabel-mobile-row mabel-mobile-row-" + message.role });
     if (message.role === "assistant") {
@@ -81,8 +91,12 @@ class MobileChat extends ItemView {
     const bubble = row.createDiv({ cls: "mabel-mobile-bubble mabel-mobile-" + message.role });
     bubble.createDiv({ cls: "mabel-mobile-author", text: message.role === "user" ? "You" : "Mabel" });
     const content = bubble.createDiv();
-    void MarkdownRenderer.render(this.app, message.content, content, "", this)
-      .catch(() => content.setText(message.content));
+    if (plain) {
+      content.setText(message.content);
+    } else {
+      void MarkdownRenderer.render(this.app, message.content, content, "", this)
+        .catch(() => content.setText(message.content));
+    }
     this.transcript.scrollTop = this.transcript.scrollHeight;
     return content;
   }
@@ -98,19 +112,22 @@ class MobileChat extends ItemView {
     this.submit.disabled = true;
     this.submit.setText("Thinking…");
     this.entry.value = "";
-    const prior = this.plugin.settings.history.slice();
+    const prior = this.plugin.getActiveMessages().slice();
+    const chatId = this.plugin.settings.activeChatId;
     const user: Message = { role: "user", content: text };
     this.appendMessage(user);
-    const output = this.appendMessage({ role: "assistant", content: "…" });
-    output.setText("…");
+    const output = this.appendMessage({ role: "assistant", content: "Connecting…" }, true);
     try {
       const response = await this.plugin.answer(prior, text, this.includeNote.checked, this.useTools.checked, partial => {
-        output.setText(partial || "…");
+        output.setText(partial || "Waiting for response…");
         this.transcript.scrollTop = this.transcript.scrollHeight;
+      }, status => {
+        // Status updates are only placeholders, never appended to chat history.
+        output.setText(status);
       });
       output.empty();
       await MarkdownRenderer.render(this.app, response, output, "", this);
-      await this.plugin.addHistory(user, { role: "assistant", content: response });
+      await this.plugin.addHistory(chatId, user, { role: "assistant", content: response });
     } catch (error) {
       output.setText("Request failed: " + String(error));
       output.addClass("mabel-mobile-error");
@@ -118,6 +135,36 @@ class MobileChat extends ItemView {
       this.busy = false;
       this.submit.disabled = false;
       this.submit.setText("Send");
+    }
+  }
+}
+
+class MobileHistoryModal extends Modal {
+  constructor(app: MabelMobilePlugin["app"], private readonly plugin: MabelMobilePlugin) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.contentEl.empty();
+    new Setting(this.contentEl).setName("Previous conversations").setHeading();
+    const chats = [...this.plugin.settings.chats]
+      .filter(chat => chat.messages.length)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    if (!chats.length) {
+      this.contentEl.createDiv({ text: "No previous conversations yet." });
+      return;
+    }
+    for (const chat of chats) {
+      const selected = chat.id === this.plugin.settings.activeChatId;
+      new Setting(this.contentEl)
+        .setName(chat.title)
+        .setDesc(new Date(chat.updatedAt).toLocaleString() + (selected ? " · Current chat" : ""))
+        .addButton(button => button
+          .setButtonText(selected ? "Current" : "Open")
+          .setDisabled(selected)
+          .onClick(() => {
+            void this.plugin.selectChat(chat.id).then(() => this.close());
+          }));
     }
   }
 }
@@ -216,8 +263,12 @@ export default class MabelMobilePlugin extends Plugin {
   private lastNotePath: string | null = null;
 
   async onload(): Promise<void> {
-    const stored = await this.loadData() as Partial<MobileSettings> | null;
-    this.settings = { ...defaults, ...stored, history: Array.isArray(stored?.history) ? stored.history : [] };
+    const stored = await this.loadData() as (Partial<MobileSettings> & { history?: Message[] }) | null;
+    const migration = migrateChatState(stored ?? {});
+    this.settings = { ...defaults, ...stored, chats: migration.chats, activeChatId: migration.activeChatId };
+    // The legacy single transcript has been imported into the first conversation.
+    delete (this.settings as Partial<MobileSettings> & { history?: Message[] }).history;
+    if (migration.migrated) await this.saveSettings();
     this.registerView(VIEW, leaf => new MobileChat(leaf, this));
     this.addRibbonIcon("bot", OPEN_LABEL, () => { void this.openChat(); });
     this.addCommand({ id: "open-chat", name: OPEN_LABEL, callback: () => { void this.openChat(); } });
@@ -236,9 +287,40 @@ export default class MabelMobilePlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
-  async clearHistory(): Promise<void> { this.settings.history = []; await this.saveSettings(); }
-  async addHistory(user: Message, assistant: Message): Promise<void> {
-    this.settings.history = [...this.settings.history, user, assistant].slice(-60);
+
+  getActiveMessages(): Message[] {
+    return this.settings.chats.find(chat => chat.id === this.settings.activeChatId)?.messages ?? [];
+  }
+
+  private chatBusy(): boolean {
+    return this.app.workspace.getLeavesOfType(VIEW).some(leaf =>
+      leaf.view instanceof MobileChat && leaf.view.isBusy());
+  }
+
+  private refreshChat(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) {
+      if (leaf.view instanceof MobileChat) leaf.view.refreshConversation();
+    }
+  }
+
+  async startNewChat(): Promise<void> {
+    if (this.chatBusy()) return;
+    const chat = newConversation();
+    this.settings.chats = [chat, ...this.settings.chats].slice(0, 50);
+    this.settings.activeChatId = chat.id;
+    await this.saveSettings();
+    this.refreshChat();
+  }
+
+  async selectChat(id: string): Promise<void> {
+    if (this.chatBusy() || !this.settings.chats.some(chat => chat.id === id)) return;
+    this.settings.activeChatId = id;
+    await this.saveSettings();
+    this.refreshChat();
+  }
+
+  async addHistory(chatId: string, user: Message, assistant: Message): Promise<void> {
+    this.settings.chats = appendConversation(this.settings.chats, chatId, user, assistant);
     await this.saveSettings();
   }
 
@@ -275,7 +357,7 @@ export default class MabelMobilePlugin extends Plugin {
 
   async answer(
     prior: Message[], question: string, includeActiveNote: boolean,
-    enableTools: boolean, onText: (text: string) => void,
+    enableTools: boolean, onText: (text: string) => void, onStatus: (status: string) => void,
   ): Promise<string> {
     const systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
     let userContent = question;
@@ -310,6 +392,7 @@ export default class MabelMobilePlugin extends Plugin {
       ? mobileToolDefinitions(this.settings.allowVaultTools, this.settings.allowWebSearch)
       : [];
     if (definitions.length) {
+      onStatus("Checking available tools…");
       for (let round = 0; round < 3; round++) {
         const response = await requestUrl({
           url: this.settings.baseUrl + "/api/chat",
@@ -335,10 +418,10 @@ export default class MabelMobilePlugin extends Plugin {
           );
           messages.push({ role: "tool", tool_name: name, content: output.slice(0, 15000) });
         }
-        onText("Consulting tools…");
+        onStatus("Reading tool results…");
       }
       // Prevent infinite tool recursion. Final response may use the results.
     }
-    return streamOllama(this.settings.baseUrl, payload, onText);
+    return streamOllama(this.settings.baseUrl, payload, onText, onStatus);
   }
 }

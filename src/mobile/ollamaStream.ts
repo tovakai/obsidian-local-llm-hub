@@ -4,8 +4,10 @@ import { requestUrl } from "obsidian";
  * Obsidian requestUrl is the reliable non-streaming fallback on Android. */
 export async function streamOllama(
   baseUrl: string, payload: Record<string, unknown>, onText: (text: string) => void,
+  onStatus: (status: string) => void = () => undefined,
 ): Promise<string> {
   let accumulated = "";
+  onStatus("Connecting for live response…");
   try {
     const response = await fetch(baseUrl + "/api/chat", {
       method: "POST",
@@ -14,6 +16,7 @@ export async function streamOllama(
     });
     if (!response.ok) throw new Error("Streaming HTTP " + response.status);
     if (!response.body) throw new Error("Streaming unavailable");
+    onStatus("Waiting for Mabel…");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -43,6 +46,7 @@ export async function streamOllama(
     return accumulated;
   } catch (error) {
     if (accumulated) throw error; // Don't replay a partly displayed answer.
+    onStatus("Waiting for reply (buffered connection)…");
     const response = await requestUrl({
       url: baseUrl + "/api/chat",
       method: "POST", contentType: "application/json",
