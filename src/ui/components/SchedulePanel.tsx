@@ -62,6 +62,32 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
     };
   }, [plugin]);
 
+  useEffect(() => {
+    const onProposed = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const proposal = value as Record<string, unknown>;
+      const initial = newDraft();
+      const dateText = typeof proposal.startsAtLocal === "string" ? proposal.startsAtLocal : localInput(initial.startsAt);
+      const parsed = new Date(dateText).getTime();
+      const next: TaskDraft = {
+        title: typeof proposal.title === "string" ? proposal.title : "",
+        prompt: typeof proposal.prompt === "string" ? proposal.prompt : "",
+        kind: proposal.kind === "prompt" ? "prompt" : "reminder",
+        repeat: ["daily", "weekly", "interval"].includes(String(proposal.repeat))
+          ? proposal.repeat as ScheduleRepeat : "once",
+        intervalMinutes: typeof proposal.intervalMinutes === "number" ? proposal.intervalMinutes : 60,
+        startsAt: parsed,
+      };
+      setDraft(next);
+      setDateInput(dateText);
+      setEditing(null);
+      setError("Review this proposed task and click Save schedule to approve it.");
+      setIsCreating(true);
+    };
+    plugin.settingsEmitter.on("schedule-draft", onProposed);
+    return () => plugin.settingsEmitter.off("schedule-draft", onProposed);
+  }, [plugin]);
+
   const sorted = useMemo(() => [...tasks].sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
     return (a.nextRunAt ?? Number.MAX_SAFE_INTEGER) - (b.nextRunAt ?? Number.MAX_SAFE_INTEGER);
