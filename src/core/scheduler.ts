@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 import { randomUUID } from "node:crypto";
 import type { LocalLlmHubPlugin } from "../plugin";
-import { localLlmChatStream } from "./localLlmProvider";
+import { runScheduledAgent, type ScheduledToolAudit } from "./scheduledAgent";
 
 export type ScheduleKind = "reminder" | "prompt";
 export type ScheduleRepeat = "once" | "daily" | "weekly" | "interval";
@@ -15,6 +15,10 @@ export interface ScheduledTask {
   repeat: ScheduleRepeat;
   /** Minutes, for interval tasks only. Minimum 15 minutes. */
   intervalMinutes: number;
+  /** Explicit permission for unattended vault read/write tools. Defaults to false. */
+  allowTools?: boolean;
+  /** Separately allow connected MCP tools (which may execute commands). Defaults to false. */
+  allowMcpTools?: boolean;
   /** Original local-wall-clock anchor, stored as a Unix millisecond timestamp. */
   startsAt: number;
   nextRunAt: number | null;
@@ -26,7 +30,7 @@ export interface ScheduledTask {
   lastError?: string;
 }
 
-export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt">;
+export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt" | "allowTools" | "allowMcpTools">;
 
 /**
  * Find the next occurrence strictly AFTER the supplied instant.
@@ -69,7 +73,10 @@ export function validateTask(draft: TaskDraft): TaskDraft {
   if (draft.repeat === "interval" && (!Number.isInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 10_080)) {
     throw new Error("Interval must be between 15 and 10,080 minutes.");
   }
-  return { ...draft, title, prompt, intervalMinutes: draft.repeat === "interval" ? draft.intervalMinutes : 60 };
+  return { ...draft, title, prompt, intervalMinutes: draft.repeat === "interval" ? draft.intervalMinutes : 60,
+    allowTools: draft.kind === "prompt" && draft.allowTools === true,
+    allowMcpTools: draft.kind === "prompt" && draft.allowTools === true && draft.allowMcpTools === true,
+  };
 }
 
 function sanitizeHeading(value: string): string {
@@ -203,7 +210,7 @@ export class ScheduledTaskManager {
     }
   }
 
-  private async logRun(task: ScheduledTask, at: number, output: string, error?: string): Promise<string> {
+  private async logRun(task: ScheduledTask, at: number, output: string, audit: ScheduledToolAudit[], error?: string): Promise<string> {
     const root = (this.plugin.settings.workspaceFolder || "LocalLlmHub").replace(/^\/|\/$/g, "");
     const folder = root + "/scheduler/runs/" + task.id;
     await this.ensureFolder(folder);
@@ -214,6 +221,8 @@ export class ScheduledTaskManager {
       "- Scheduled task: " + task.id,
       "- Run time: " + new Date(at).toISOString(),
       "- Kind: " + task.kind,
+      "- Unattended vault tools: " + (task.allowTools === true ? "enabled" : "disabled"),
+      "- Unattended MCP tools: " + (task.allowTools === true && task.allowMcpTools === true ? "enabled" : "disabled"),
       "- Status: " + (error ? "failed" : "success"),
       "",
       "## Instruction",
@@ -224,31 +233,20 @@ export class ScheduledTaskManager {
       "",
       output,
       "",
+      ...(audit.length ? [
+        "## Tool activity", "",
+        ...audit.map(entry => "- " + (entry.success ? "Success" : "Failed") + ": `" + entry.name + "`" +
+          (entry.target ? " (" + entry.target.replace(/[\r\n]/g, " ") + ")" : "") + " — " + entry.detail.replace(/[\r\n]/g, " ")),
+        "",
+      ] : []),
     ];
     // Task IDs and filenames are controlled by the scheduler, not by a model.
     await this.plugin.app.vault.create(path, lines.join("\n"));
     return path;
   }
 
-  private async generate(task: ScheduledTask, signal: AbortSignal): Promise<string> {
-    const config = { ...this.plugin.settings.llmConfig };
-    if (!config.model) throw new Error("Configure Mabel's local model before running prompts.");
-    const messages = [{ role: "user" as const, content: task.prompt, timestamp: Date.now() }];
-    const policy = [
-      this.plugin.settings.systemPrompt,
-      "You are executing a user-approved scheduled prompt in the local Obsidian assistant.",
-      "Respond to the instruction directly. Tools, command execution, external services, and modification of existing vault notes are not available in scheduled prompt mode.",
-      "Do not claim you performed any action that wasn't actually performed.",
-      "Current local date and time: " + new Date().toString(),
-    ].filter(Boolean).join("\n\n");
-    let result = "";
-    for await (const chunk of localLlmChatStream(config, messages, policy, signal)) {
-      if (chunk.type === "text") result += chunk.content || "";
-      if (chunk.type === "error") throw new Error(chunk.error || chunk.content || "Local model failed.");
-    }
-    if (signal.aborted) throw new Error("Scheduled run cancelled.");
-    if (!result.trim()) throw new Error("The local model returned no response.");
-    return result.trim();
+  private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[]): Promise<string> {
+    return runScheduledAgent(task, this.plugin, signal, audit);
   }
 
   private async execute(task: ScheduledTask, manual: boolean): Promise<void> {
@@ -257,6 +255,7 @@ export class ScheduledTaskManager {
     const controller = new AbortController();
     this.controllers.set(task.id, controller);
     const at = Date.now();
+    const audit: ScheduledToolAudit[] = [];
     task.lastRunAt = at;
     task.lastStatus = "running";
     task.lastError = undefined;
@@ -269,9 +268,9 @@ export class ScheduledTaskManager {
       // Reserve the occurrence before invoking the model. This avoids
       // repeated execution if a scheduler tick arrives during a long run.
       await this.persist();
-      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal);
+      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal, audit);
       if (this.closed) return;
-      task.lastResultPath = await this.logRun(task, at, output);
+      task.lastResultPath = await this.logRun(task, at, output, audit);
       task.lastStatus = "success";
       new Notice(task.kind === "reminder"
         ? "Mabel reminder: " + task.title + "\n" + task.prompt.slice(0, 160)
@@ -281,7 +280,7 @@ export class ScheduledTaskManager {
       task.lastStatus = "failed";
       task.lastError = cause instanceof Error ? cause.message : String(cause);
       try {
-        task.lastResultPath = await this.logRun(task, at, task.lastError, task.lastError);
+        task.lastResultPath = await this.logRun(task, at, task.lastError, audit, task.lastError);
       } catch (loggingError) {
         console.error("[Mabel scheduler] Failed to save execution log:", loggingError);
       }
