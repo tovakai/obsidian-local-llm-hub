@@ -5,6 +5,11 @@ type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
 type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; history: Message[] };
 const VIEW = "mabel-mobile-chat";
+const TITLE = "Mabel Mobile";
+const OPEN_LABEL = "Open Mabel Mobile";
+const TALK_PLACEHOLDER = "Talk to Mabel…";
+const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
+const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
 const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, history: [] };
 
 class MobileChat extends ItemView {
@@ -15,7 +20,7 @@ class MobileChat extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: MabelMobilePlugin) { super(leaf); }
   getViewType(): string { return VIEW; }
-  getDisplayText(): string { return "Mabel Mobile"; }
+  getDisplayText(): string { return TITLE; }
   getIcon(): string { return "bot"; }
 
   async onOpen(): Promise<void> {
@@ -30,12 +35,13 @@ class MobileChat extends ItemView {
     this.transcript = root.createDiv({ cls: "mabel-mobile-transcript" });
     this.renderMessages();
     const composer = root.createDiv({ cls: "mabel-mobile-composer" });
-    this.entry = composer.createEl("textarea", { attr: { rows: "3", placeholder: "Talk to Mabel…", "aria-label": "Message" } });
+    this.entry = composer.createEl("textarea", { attr: { rows: "3", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
     this.entry.addEventListener("keydown", event => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); void this.send(); }
     });
     this.submit = composer.createEl("button", { text: "Send", cls: "mod-cta" });
     this.submit.addEventListener("click", () => { void this.send(); });
+    await Promise.resolve();
   }
 
   private renderMessages(): void {
@@ -61,7 +67,7 @@ class MobileChat extends ItemView {
     const text = this.entry.value.trim();
     if (!text || this.busy) return;
     if (!this.plugin.settings.baseUrl || !this.plugin.settings.model) {
-      new Notice("Configure the Ollama URL and model in Mabel Mobile settings.");
+      new Notice(CONFIG_NOTICE);
       return;
     }
     this.busy = true;
@@ -91,12 +97,12 @@ class MobileSettingsTab extends PluginSettingTab {
   display(): void {
     const root = this.containerEl;
     root.empty();
-    root.createEl("h2", { text: "Mabel Mobile" });
-    root.createEl("p", { text: "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel." });
+    new Setting(root).setName(TITLE).setHeading();
+    root.createEl("p", { text: REMOTE_HINT });
     new Setting(root).setName("Ollama URL")
       .setDesc("Example: https://desktop.tailnet.ts.net (without /api/chat)")
       .addText(input => {
-        input.setPlaceholder("https://…").setValue(this.plugin.settings.baseUrl)
+        input.setPlaceholder("Server address").setValue(this.plugin.settings.baseUrl)
           .onChange(async value => { this.plugin.settings.baseUrl = value.trim().replace(/\/+$/, ""); await this.plugin.saveSettings(); });
         input.inputEl.addClass("mabel-mobile-wide");
       });
@@ -134,12 +140,10 @@ export default class MabelMobilePlugin extends Plugin {
     const stored = await this.loadData() as Partial<MobileSettings> | null;
     this.settings = { ...defaults, ...stored, history: Array.isArray(stored?.history) ? stored.history : [] };
     this.registerView(VIEW, leaf => new MobileChat(leaf, this));
-    this.addRibbonIcon("bot", "Open Mabel Mobile", () => { void this.openChat(); });
-    this.addCommand({ id: "open-chat", name: "Open Mabel Mobile", callback: () => { void this.openChat(); } });
+    this.addRibbonIcon("bot", OPEN_LABEL, () => { void this.openChat(); });
+    this.addCommand({ id: "open-chat", name: OPEN_LABEL, callback: () => { void this.openChat(); } });
     this.addSettingTab(new MobileSettingsTab(this.app, this));
   }
-
-  onunload(): void { this.app.workspace.detachLeavesOfType(VIEW); }
 
   async openChat(): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(VIEW)[0];
