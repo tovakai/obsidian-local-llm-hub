@@ -57,7 +57,7 @@ class MobileChat extends ItemView {
     noteLabel.appendText(" Include active note");
     const toolLabel = options.createEl("label");
     this.useTools = toolLabel.createEl("input", { type: "checkbox" });
-    toolLabel.appendText(" Allow read-only tools");
+    toolLabel.appendText(" Allow tools");
     const inputRow = composer.createDiv({ cls: "mabel-mobile-input-row" });
     this.entry = inputRow.createEl("textarea", { attr: { rows: "2", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
     this.entry.addEventListener("keydown", event => {
@@ -259,7 +259,7 @@ class MobileSettingsTab extends PluginSettingTab {
         .setValue(this.plugin.settings.writeMode)
         .onChange(async value => { this.plugin.settings.writeMode = value as "readOnly" | "ask"; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow vault tools")
-      .setDesc("Read-only note search, listing, and reading, enabled only when requested in the chat.")
+      .setDesc("Note reading and searching when enabled in chat. In Ask mode, writes still require individual approval.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.allowVaultTools)
         .onChange(async value => { this.plugin.settings.allowVaultTools = value; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow web search")
