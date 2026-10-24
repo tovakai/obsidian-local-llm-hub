@@ -3,18 +3,19 @@ import { readAvatarImage } from "../avatarImage";
 import { streamOllama } from "./ollamaStream";
 import { mobileToolDefinitions, executeMobileTool, type FunctionCall } from "./mobileTools";
 import { appendConversation, migrateChatState, newConversation, type MobileConversation } from "./chatHistory";
+import { createUserProfileTemplate, getCoreUserContext, USER_PROFILE_PATH } from "../userContext";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; chats: MobileConversation[]; activeChatId: string };
+type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; loadUserProfile: boolean; writeMode: "readOnly" | "ask"; chats: MobileConversation[]; activeChatId: string };
 const VIEW = "mabel-mobile-chat";
 const TITLE = "Mabel Mobile";
 const OPEN_LABEL = "Open Mabel Mobile";
 const TALK_PLACEHOLDER = "Talk to Mabel…";
 const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
 const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
-const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, chats: [], activeChatId: "" };
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, loadUserProfile: true, writeMode: "readOnly", chats: [], activeChatId: "" };
 
 class MobileChat extends ItemView {
   private transcript!: HTMLElement;
@@ -56,7 +57,7 @@ class MobileChat extends ItemView {
     noteLabel.appendText(" Include active note");
     const toolLabel = options.createEl("label");
     this.useTools = toolLabel.createEl("input", { type: "checkbox" });
-    toolLabel.appendText(" Allow read-only tools");
+    toolLabel.appendText(" Allow tools");
     const inputRow = composer.createDiv({ cls: "mabel-mobile-input-row" });
     this.entry = inputRow.createEl("textarea", { attr: { rows: "2", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
     this.entry.addEventListener("keydown", event => {
@@ -236,8 +237,29 @@ class MobileSettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           await this.plugin.refreshChatAvatar();
         }));
+    new Setting(root).setName("Load user profile")
+      .setDesc("Always include a short summary from the shared user profile in each chat.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.loadUserProfile !== false)
+        .onChange(async value => { this.plugin.settings.loadUserProfile = value; await this.plugin.saveSettings(); }));
+    new Setting(root).setName("About the user")
+      .setDesc(USER_PROFILE_PATH)
+      .addButton(button => button.setButtonText("Create or open").onClick(() => {
+        void (async () => {
+          try {
+            const created = await createUserProfileTemplate(this.plugin.app);
+            const file = this.plugin.app.vault.getAbstractFileByPath(USER_PROFILE_PATH);
+            if (file instanceof TFile) await this.plugin.app.workspace.getLeaf(true).openFile(file);
+            if (created) new Notice("Created user profile template.");
+          } catch (error) { new Notice(String(error)); }
+        })();
+      }));
+    new Setting(root).setName("Vault write permissions")
+      .setDesc("Read-only by default. Ask mode requires explicit approval for each create/update. No deletion tools.")
+      .addDropdown(dropdown => dropdown.addOption("readOnly", "Read-only").addOption("ask", "Ask before editing")
+        .setValue(this.plugin.settings.writeMode)
+        .onChange(async value => { this.plugin.settings.writeMode = value as "readOnly" | "ask"; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow vault tools")
-      .setDesc("Read-only note search, listing, and reading, enabled only when requested in the chat.")
+      .setDesc("Note reading and searching when enabled in chat. Writing still requires individual approval.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.allowVaultTools)
         .onChange(async value => { this.plugin.settings.allowVaultTools = value; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow web search")
@@ -359,7 +381,8 @@ export default class MabelMobilePlugin extends Plugin {
     prior: Message[], question: string, includeActiveNote: boolean,
     enableTools: boolean, onText: (text: string) => void, onStatus: (status: string) => void,
   ): Promise<string> {
-    const systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
+    let systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
+    if (this.settings.loadUserProfile !== false) systemPrompt += await getCoreUserContext(this.app);
     let userContent = question;
     if (includeActiveNote) {
       const path = this.lastNotePath;
@@ -387,9 +410,9 @@ export default class MabelMobilePlugin extends Plugin {
     };
     if (this.settings.thinking !== "default") payload.think = this.settings.thinking === "on";
 
-    // Mobile tools are intentionally opt-in, local, and read-only.
+    // Mobile tools are opt-in; model-initiated writes always require separate approval.
     const definitions = enableTools
-      ? mobileToolDefinitions(this.settings.allowVaultTools, this.settings.allowWebSearch)
+      ? mobileToolDefinitions(this.settings.allowVaultTools, this.settings.allowWebSearch, this.settings.writeMode)
       : [];
     if (definitions.length) {
       onStatus("Checking available tools…");
@@ -414,7 +437,7 @@ export default class MabelMobilePlugin extends Plugin {
           const args = call.function?.arguments;
           const argumentsObject = args && typeof args === "object" ? args : {};
           const output = await executeMobileTool(
-            this.app, name, argumentsObject, this.settings.allowVaultTools, this.settings.allowWebSearch,
+            this.app, name, argumentsObject, this.settings.allowVaultTools, this.settings.allowWebSearch, this.settings.writeMode,
           );
           messages.push({ role: "tool", tool_name: name, content: output.slice(0, 15000) });
         }

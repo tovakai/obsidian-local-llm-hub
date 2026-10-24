@@ -1,5 +1,6 @@
-import { Notice, Setting } from "obsidian";
+import { Notice, Setting, TFile } from "obsidian";
 import { readAvatarImage } from "src/avatarImage";
+import { createUserProfileTemplate, USER_PROFILE_PATH } from "src/userContext";
 import { t } from "src/i18n";
 import type { LocalLlmHubPlugin } from "src/plugin";
 import { normalizeVaultScopePath } from "obsidian-llm-hub-common/core";
@@ -13,6 +14,24 @@ interface SettingsContext {
 export function displayChatSettings(containerEl: HTMLElement, ctx: SettingsContext): void {
   const { plugin } = ctx;
   addVoiceSubmitSettings(containerEl, ctx);
+  new Setting(containerEl)
+    .setName(t("settings.loadUserProfile"))
+    .setDesc(t("settings.loadUserProfileDesc"))
+    .addToggle(toggle => toggle.setValue(plugin.settings.loadUserProfile !== false)
+      .onChange(async enabled => { plugin.settings.loadUserProfile = enabled; await plugin.saveSettings(); }));
+  new Setting(containerEl)
+    .setName(t("settings.userProfile"))
+    .setDesc(USER_PROFILE_PATH)
+    .addButton(button => button.setButtonText(t("settings.userProfileOpen")).onClick(() => {
+      void (async () => {
+        try {
+          const created = await createUserProfileTemplate(plugin.app);
+          const note = plugin.app.vault.getAbstractFileByPath(USER_PROFILE_PATH);
+          if (note instanceof TFile) await plugin.app.workspace.getLeaf(true).openFile(note);
+          if (created) new Notice(t("settings.userProfileCreated"));
+        } catch (error) { new Notice(String(error)); }
+      })();
+    }));
   const avatarPreview = containerEl.createDiv({ cls: "llm-hub-avatar-setting-preview" });
   const updatePreview = () => {
     avatarPreview.empty();

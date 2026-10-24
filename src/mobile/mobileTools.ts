@@ -1,4 +1,7 @@
 import { App, TFile, requestUrl } from "obsidian";
+import { getUserContext } from "../userContext";
+import { approveMobileWrite } from "./mobileWriteApproval";
+import type { WriteOperation } from "./mobileWriteSafety";
 
 export interface FunctionCall { function: { name: string; arguments: Record<string, unknown> } }
 export interface ToolDefinition {
@@ -9,12 +12,30 @@ const param = (description: string) => ({ type: "string", description });
 const accessibleNotes = (app: App) => app.vault.getMarkdownFiles().filter(file =>
   !file.path.startsWith(app.vault.configDir + "/") && !file.path.startsWith("LocalLlmHub/"));
 
-export function mobileToolDefinitions(vault: boolean, web: boolean): ToolDefinition[] {
+export function mobileToolDefinitions(vault: boolean, web: boolean, writeMode: "readOnly" | "ask" = "readOnly"): ToolDefinition[] {
   const defs: ToolDefinition[] = [];
   if (vault) defs.push(
     { type: "function", function: { name: "list_notes", description: "List Markdown note paths in this vault.", parameters: { type: "object", properties: { filter: param("Optional path filter") } } } },
     { type: "function", function: { name: "read_note", description: "Read one Markdown note by exact vault-relative path.", parameters: { type: "object", properties: { path: param("Exact Markdown note path") }, required: ["path"] } } },
     { type: "function", function: { name: "search_notes", description: "Search Markdown note paths and contents, returning brief excerpts.", parameters: { type: "object", properties: { query: param("Text to find in titles or contents") }, required: ["query"] } } },
+  );
+  if (vault) defs.push({
+    type: "function",
+    function: {
+      name: "get_user_context",
+      description: "Look up curated information about the user, preferences and projects from shared Obsidian memory notes.",
+      parameters: { type: "object", properties: { topic: param("Relevant topic such as books, Linux or social preferences") } },
+    },
+  });
+  if (vault && writeMode === "ask") defs.push(
+    { type: "function", function: {
+      name: "create_note", description: "Propose a new Markdown note. The user must approve exact content before any file is written.",
+      parameters: { type: "object", properties: { path: param("Vault-relative .md file path"), content: param("Complete Markdown content") }, required: ["path", "content"] },
+    } },
+    { type: "function", function: {
+      name: "update_note", description: "Propose replacing an existing Markdown note. The user reviews both full versions before it is written.",
+      parameters: { type: "object", properties: { path: param("Existing vault-relative .md file path"), content: param("Complete new Markdown content") }, required: ["path", "content"] },
+    } },
   );
   if (web) defs.push({ type: "function", function: { name: "web_search", description: "Search the public web through DuckDuckGo for current information.", parameters: { type: "object", properties: { query: param("Web search query") }, required: ["query"] } } });
   return defs;
@@ -47,7 +68,8 @@ async function searchWeb(query: string): Promise<string> {
   return results.length ? JSON.stringify(results) : "No search results. Do not invent findings.";
 }
 
-export async function executeMobileTool(app: App, name: string, args: Record<string, unknown>, vault: boolean, web: boolean): Promise<string> {
+export async function executeMobileTool(app: App, name: string, args: Record<string, unknown>,
+  vault: boolean, web: boolean, writeMode: "readOnly" | "ask" = "readOnly"): Promise<string> {
   if (name === "web_search" && web) {
     const query = argument(args, "query");
     if (!query) return "Missing search query.";
@@ -55,6 +77,11 @@ export async function executeMobileTool(app: App, name: string, args: Record<str
     catch (error) { return "Web search unavailable: " + String(error); }
   }
   if (!vault) return "Vault tools are disabled.";
+  if (name === "get_user_context") return getUserContext(app, argument(args, "topic"));
+  if (name === "create_note" || name === "update_note") {
+    if (writeMode !== "ask") return "Rejected: write permissions are disabled.";
+    return approveMobileWrite(app, name as WriteOperation, args);
+  }
   const notes = accessibleNotes(app);
   if (name === "list_notes") {
     const filter = argument(args, "filter").toLowerCase();

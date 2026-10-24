@@ -41,6 +41,7 @@ import {
   type CommandVariableSources,
 } from "obsidian-llm-hub-common/chat";
 import { getVaultTools, readNoteTool, skillWorkflowTool, SKILL_WORKFLOW_TOOL_NAME } from "src/core/tools";
+import { getCoreUserContext, getUserContext, USER_CONTEXT_TOOL, USER_CONTEXT_TOOL_NAME } from "src/userContext";
 import { EXECUTE_JAVASCRIPT_TOOL } from "src/core/sandboxExecutor";
 import { executeToolCall, type ToolExecutionResult } from "src/core/toolExecutor";
 import { GET_WORKFLOW_SPEC_TOOL, GET_WORKFLOW_SPEC_TOOL_NAME, handleGetWorkflowSpec } from "src/workflow/workflowSpec";
@@ -774,6 +775,9 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             systemPrompt += `\n\nAdditional instructions: ${plugin.settings.systemPrompt}`;
           }
 
+          if (plugin.settings.loadUserProfile !== false) {
+            systemPrompt += await getCoreUserContext(plugin.app);
+          }
           if (activeOkfBundleIds.some(isBuiltinOkfBundleId)) {
             systemPrompt += buildBuiltinOkfSystemPrompt();
           }
@@ -834,6 +838,9 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             new Notice(t("chat.anythingLlmToolsNotSupported"));
           }
           const tools = [...vaultTools, ...mcpTools];
+          if (!isAnythingLlm && vaultToolMode !== "none" && plugin.settings.loadUserProfile !== false) {
+            tools.push(USER_CONTEXT_TOOL);
+          }
 
           // Vault skills are loaded lazily — their SKILL.md (workflow IDs,
           // inputVariables, full instructions) is only reachable via read_note.
@@ -975,7 +982,10 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             for (const tc of pendingToolCalls) {
               if (session.isActive()) setStreamingContent(fullContent + `\n\n🔧 ${tc.name}...`);
 
-              const result: ToolExecutionResult = tc.name === RAG_SEARCH_TOOL_NAME
+              const result: ToolExecutionResult = tc.name === USER_CONTEXT_TOOL_NAME
+                ? { success: true, result: await getUserContext(plugin.app,
+                  typeof tc.args.topic === "string" ? tc.args.topic : "") }
+                : tc.name === RAG_SEARCH_TOOL_NAME
                 ? await (async () => {
                   if (!selectedRagSetting || !activeRagSetting) {
                     return { success: false, result: "RAG is not enabled for this turn." };

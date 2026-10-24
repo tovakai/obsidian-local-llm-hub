@@ -1,4 +1,4 @@
-# Mabel Mobile v0.3.0: experimental Android-first companion
+# Mabel Mobile v0.4.0: experimental Android-first companion
 
 This prototype lives in the same **fork** but has its own Obsidian plugin ID,
 `mabel-mobile`. It does **not** replace or modify Local LLM Hub on Windows/Linux.
@@ -49,3 +49,23 @@ The desktop fork adds an **Assistant profile picture** setting in Local LLM Hub 
   public port forwarding. Tailscale Serve stays private to your tailnet.
 
 - The composer shows **Include active note** and **Allow read-only tools** above the text box; **Send** shares the input row.
+
+## Shared user context
+
+Desktop and Android read the same `Mabel/Memory/User.md` from the Obsidian
+vault. Use the new **About the user → Create or open** settings button
+to generate an empty template and populate it with *confirmed* facts.
+Each client injects a bounded excerpt into its system prompt unless disabled.
+With vault tools enabled, `get_user_context(topic)` can read bounded excerpts
+from User.md, Preferences.md, and Projects.md. Desktop RAG remains independent.
+
+## Ask-before-editing on Android
+
+**Vault write permissions** defaults to **Read-only**. Select **Ask before
+editing** to offer `create_note` and `update_note` to the assistant when
+the per-message tool checkbox is enabled. Every operation shows the existing
+and proposed full Markdown contents in an approval dialog.
+Closing or rejecting does not write. Updates recheck existing content before
+writing to avoid overwriting a concurrent synced edit. Hidden folders,
+plugin config files, and non-Markdown files are not writable.
+No delete, rename, or silent write tools are enabled.

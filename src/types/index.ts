@@ -209,6 +209,7 @@ export interface LocalLlmHubSettings {
   maxSavedChatHistories: number;
   manualChatSaveFolder: string;
   systemPrompt: string;
+  loadUserProfile: boolean;
   assistantAvatar?: string; // Resized PNG data URL, shared with mobile companion
   voiceChat: VoiceChatSettings;
   encryption: EncryptionSettings;
@@ -271,6 +272,7 @@ export const DEFAULT_SETTINGS: LocalLlmHubSettings = {
   maxSavedChatHistories: 100,
   manualChatSaveFolder: "",
   systemPrompt: "",
+  loadUserProfile: true,
   voiceChat: { ...DEFAULT_VOICE_CHAT_SETTINGS },
   encryption: { ...DEFAULT_ENCRYPTION_SETTINGS },
   editHistory: { ...DEFAULT_EDIT_HISTORY_SETTINGS },
