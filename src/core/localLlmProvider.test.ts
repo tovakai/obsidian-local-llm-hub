@@ -87,6 +87,31 @@ describe("Ollama continuation diagnostics", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it.each([
+    { mode: undefined, expected: undefined },
+    { mode: "default", expected: undefined },
+    { mode: "off", expected: false },
+    { mode: "on", expected: true },
+  ] as const)("sets Ollama thinking to $mode and captures the exact request", async ({ mode, expected }) => {
+    respond({ message: { content: "Answer" }, done: true });
+    const writer = vi.fn().mockResolvedValue(undefined);
+    await collect({ ollamaThinking: mode, captureOllamaRequests: true }, undefined, writer);
+    const sent = streamLines.mock.calls[0][0];
+    const body = JSON.parse(sent.body);
+    if (expected === undefined) expect(body).not.toHaveProperty("think");
+    else expect(body.think).toBe(expected);
+    expect(body.messages.map((message: { role: string }) => message.role))
+      .toEqual(["system", "user", "assistant", "tool"]);
+    expect(writer).toHaveBeenCalledWith({ requestId: expect.any(String), body: sent.body });
+  });
+
+  it("does not send Ollama-specific thinking options to non-Ollama providers", async () => {
+    sharedChat.mockImplementation(async function* () { yield { type: "done" }; });
+    await collect({ framework: "lm-studio", ollamaThinking: "off" });
+    expect(sharedChat).toHaveBeenCalledOnce();
+    expect(streamLines).not.toHaveBeenCalled();
+  });
+
   it("sends the complete tool exchange and logs only diagnostic metadata", async () => {
     respond({ message: { content: "Nutrients is published by MDPI AG." }, done: true, done_reason: "stop", eval_count: 12 });
     const chunks = await collect();
