@@ -1,4 +1,4 @@
-# Mabel Mobile v0.5.0: experimental Android-first companion
+# Mabel Mobile v0.6.0: experimental Android-first companion
 
 This prototype lives in the same **fork** but has its own Obsidian plugin ID,
 `mabel-mobile`. It does **not** replace or modify Local LLM Hub on Windows/Linux.
@@ -78,3 +78,14 @@ Unassigned tiers retain the previously configured model as a fallback.
 Mobile can optionally reuse the desktop tier assignments via synced plugin settings.
 Desktop chat now displays the assistant name **Mabel**, keeping actual model names
 in message metadata for diagnostics; mobile already used Mabel in bubbles.
+
+## Thinking effort slider
+
+Both desktop and mobile expose Off / Brief / Standard / Deep directly in chat,
+independently of the Low / Medium / High model selector. Ollama /api/show
+advertises named thinking levels on supported models, and the plugin sends
+those exact levels when available. For models with only a boolean think switch,
+Off uses think:false, Standard uses think:true, and Brief/Deep use think:true
+with a soft system-prompt effort preference. This is not a hard reasoning-token
+budget, does not alter num_predict, and cannot guarantee a specific think length.
+Old Off/On preferences are migrated and preserved.

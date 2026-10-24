@@ -1,4 +1,5 @@
 import type { McpServerConfig } from "obsidian-llm-hub-common/core";
+import type { ThinkingEffort } from "../thinkingEffort";
 import { DEFAULT_VOICE_CHAT_SETTINGS, type VoiceChatSettings } from "obsidian-llm-hub-common/core";
 import type { McpFraming } from "obsidian-llm-hub-common/core";
 export type { McpServerConfig, McpTransport, McpFraming } from "obsidian-llm-hub-common/core";
@@ -28,7 +29,8 @@ export interface LocalLlmConfig {
   temperature?: number;         // 0.0-2.0 (undefined = server default)
   maxTokens?: number;           // Max response tokens (undefined = server default)
   streamIdleTimeoutSeconds?: number; // Seconds without streamed data before aborting (undefined = 120)
-  ollamaThinking?: OllamaThinkingMode; // default = omit think; off/on = explicitly control Ollama thinking
+  ollamaThinking?: OllamaThinkingMode; // Legacy default/on/off for Ollama
+  thinkingEffort?: ThinkingEffort; // Chat-controlled adaptive thinking effort
   captureOllamaRequests?: boolean; // Opt-in full request capture for chat diagnostics
   pdfInputMode?: PdfInputMode;  // auto defaults to extracted text for local servers
 }
@@ -212,6 +214,7 @@ export interface LocalLlmHubSettings {
   manualChatSaveFolder: string;
   systemPrompt: string;
   selectedModelTier?: ModelTier;
+  thinkingEffort?: ThinkingEffort;
   modelTiers?: ModelTierAssignments;
   loadUserProfile: boolean;
   assistantAvatar?: string; // Resized PNG data URL, shared with mobile companion

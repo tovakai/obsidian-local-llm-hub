@@ -11,6 +11,7 @@
  */
 
 import { requestUrl } from "obsidian";
+import { getOllamaThinkingControl } from "../thinkingEffort";
 import type { Message, StreamChunk, LocalLlmConfig, ToolDefinition } from "../types";
 import type { OllamaRequestWriter } from "./ollamaRequestCapture";
 import {
@@ -121,13 +122,15 @@ export async function* localLlmChatStream(
   // Keep the shared request builder, parser and transport. The host retains the
   // native terminal reason, which the shared parser currently discards.
   try {
-    const request = buildLocalLlmRequest({ config, messages, systemPrompt, tools });
-    // Ollama defaults are preserved when this optional setting is absent or "default".
-    // Rewrite the shared builder's body before both diagnostics and transport so
-    // initial requests and every tool-result continuation use the same mode.
-    if (config.ollamaThinking === "off" || config.ollamaThinking === "on") {
+    const thinkingControl = config.thinkingEffort
+      ? await getOllamaThinkingControl(config.baseUrl, config.model, config.thinkingEffort)
+      : undefined;
+    const effectiveSystemPrompt = systemPrompt + (thinkingControl?.promptHint ?? "");
+    const request = buildLocalLlmRequest({ config, messages, systemPrompt: effectiveSystemPrompt, tools });
+    // Use native thinking levels only when /api/show advertises them.
+    if (thinkingControl || config.ollamaThinking === "off" || config.ollamaThinking === "on") {
       const body = JSON.parse(request.body) as Record<string, unknown>;
-      body.think = config.ollamaThinking === "on";
+      body.think = thinkingControl ? thinkingControl.think : config.ollamaThinking === "on";
       request.body = JSON.stringify(body);
     }
     const requestId = `${Date.now()}-${++requestSequence}`;
@@ -140,7 +143,7 @@ export async function* localLlmChatStream(
     }
     if (signal?.aborted) return;
     const startedAt = Date.now();
-    const wireMessages = buildOllamaMessages(messages, systemPrompt);
+    const wireMessages = buildOllamaMessages(messages, effectiveSystemPrompt);
     const toolResults = wireMessages.filter(message => message.role === "tool");
     console.debug("[llm-hub] Ollama request", {
       requestId,

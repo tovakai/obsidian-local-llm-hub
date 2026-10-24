@@ -29,3 +29,7 @@
 .mabel-mobile-edit-preview { max-height:26vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--background-secondary); padding:10px; border:1px solid var(--background-modifier-border); border-radius:6px; font-size:.82rem; }
 
 .mabel-mobile-options select { width:auto; max-width:130px; font-size:.82rem; }
+
+.mabel-mobile-thinking-effort { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:0 2px 2px; font-size:.82rem; color:var(--text-muted); }
+.mabel-mobile-thinking-effort span { min-width:106px; }
+.mabel-mobile-thinking-effort input[type="range"] { flex:1 1 120px; min-width:95px; max-width:220px; }

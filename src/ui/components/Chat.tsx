@@ -76,6 +76,7 @@ import { buildToolFreeRecoveryMessages } from "./chat/toolRecovery";
 import { createOllamaRequestWriter } from "../../core/ollamaRequestCapture";
 import MessageList from "./MessageList";
 import { resolveTierModel, validModelTier, type ModelTier } from "src/modelTiers";
+import { parseThinkingEffort, type ThinkingEffort } from "src/thinkingEffort";
 import InputArea, { type InputAreaHandle } from "./InputArea";
 import { t } from "src/i18n";
 import { formatError } from "obsidian-llm-hub-common/core";
@@ -129,6 +130,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   const [isSidebarWide, setIsSidebarWide] = useState(false);
 
   const [selectedModelTier, setSelectedModelTier] = useState<ModelTier>(() => validModelTier(plugin.settings.selectedModelTier));
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(() =>
+    parseThinkingEffort(plugin.settings.thinkingEffort, plugin.settings.llmConfig.ollamaThinking));
   const [assistantAvatar, setAssistantAvatar] = useState(plugin.settings.assistantAvatar);
   const [ragSettingNames, setRagSettingNames] = useState<string[]>(plugin.getRagSettingNames());
   const [selectedRagSetting, setSelectedRagSetting] = useState<string | null>(plugin.getSelectedRagSettingName());
@@ -214,7 +217,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   const userInteractedRef = useRef(false);
 
   const baseLlmConfig = plugin.settings.llmConfig;
-  const llmConfig = { ...baseLlmConfig, model: resolveTierModel(selectedModelTier, plugin.settings.modelTiers, baseLlmConfig.model) };
+  const llmConfig = { ...baseLlmConfig, model: resolveTierModel(selectedModelTier, plugin.settings.modelTiers, baseLlmConfig.model), thinkingEffort };
   const ragAvailable = ragSettingNames.length > 0;
 
   useImperativeHandle(ref, () => ({
@@ -236,6 +239,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
       refreshVaultFiles();
       // Keep the chosen tier when settings assignments are edited.
       setSelectedModelTier(validModelTier(plugin.settings.selectedModelTier));
+      setThinkingEffort(parseThinkingEffort(plugin.settings.thinkingEffort, plugin.settings.llmConfig.ollamaThinking));
       setAssistantAvatar(plugin.settings.assistantAvatar);
       // Sync RAG settings
       setRagSettingNames(plugin.getRagSettingNames());
@@ -477,6 +481,12 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
       return next;
     });
   }, [saveActiveOkfBundleIds]);
+
+  const handleThinkingEffortChange = useCallback((effort: ThinkingEffort) => {
+    setThinkingEffort(effort);
+    plugin.settings.thinkingEffort = effort;
+    void plugin.saveSettings();
+  }, [plugin]);
 
   const handleModelTierChange = useCallback((tier: ModelTier) => {
     setSelectedModelTier(tier);
@@ -913,7 +923,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             let finishReason: string | undefined;
 
             const requestConfig = recovery && llmConfig.framework === "ollama"
-              ? { ...llmConfig, ollamaThinking: "off" as const }
+              ? { ...llmConfig, ollamaThinking: "off" as const, thinkingEffort: "off" as const }
               : llmConfig;
             const requestMessages = recovery
               ? buildToolFreeRecoveryMessages(conversationMessages)
@@ -1249,6 +1259,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
         messageCount={messages.length}
         selectedModelTier={selectedModelTier}
         onModelTierChange={handleModelTierChange}
+        thinkingEffort={thinkingEffort}
+        onThinkingEffortChange={handleThinkingEffortChange}
         ragSettingNames={ragSettingNames}
         selectedRagSetting={selectedRagSetting}
         ragSearchAvailable={llmConfig.framework !== "anythingllm"}
