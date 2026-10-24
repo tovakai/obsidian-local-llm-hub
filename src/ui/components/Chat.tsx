@@ -71,7 +71,8 @@ import {
 } from "./chat/chatHistory";
 import { withRequestedSkillPath, useSkillPathPersistence } from "./chat/contextSkills";
 import { buildNoDiscoverySystemPrompt } from "./chat/noDiscoveryPrompt";
-import { retryToolRound } from "./chat/toolContinuation";
+import { retryToolRound, EmptyToolContinuationError } from "./chat/toolContinuation";
+import { buildToolFreeRecoveryMessages } from "./chat/toolRecovery";
 import { createOllamaRequestWriter } from "../../core/ollamaRequestCapture";
 import MessageList from "./MessageList";
 import InputArea, { type InputAreaHandle } from "./InputArea";
@@ -897,7 +898,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
           const allToolCalls: ToolCall[] = [];
           const allToolResults: ToolResult[] = [];
           // Stream one round from the LLM, returns collected tool calls
-          const streamOneRound = async (useTools: boolean): Promise<{
+          const streamOneRound = async (useTools: boolean, recovery = false): Promise<{
             toolCalls: ToolCall[];
             incompleteToolCall: boolean;
             emptyText: boolean;
@@ -911,9 +912,15 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             currentRoundThinking = "";
             let finishReason: string | undefined;
 
+            const requestConfig = recovery && llmConfig.framework === "ollama"
+              ? { ...llmConfig, ollamaThinking: "off" as const }
+              : llmConfig;
+            const requestMessages = recovery
+              ? buildToolFreeRecoveryMessages(conversationMessages)
+              : conversationMessages;
             for await (const chunk of localLlmChatStream(
-              llmConfig,
-              conversationMessages,
+              requestConfig,
+              requestMessages,
               systemPrompt,
               abortController.signal,
               useTools && tools.length > 0 ? tools : undefined,
@@ -951,8 +958,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             };
           };
 
-          const streamOneRoundWithRetry = (useTools: boolean, retryEmptyText = false): Promise<ToolCall[]> =>
-            retryToolRound(() => streamOneRound(useTools), retryEmptyText, abortController.signal);
+          const streamOneRoundWithRetry = (useTools: boolean, retryEmptyText = false, recovery = false): Promise<ToolCall[]> =>
+            retryToolRound(() => streamOneRound(useTools, recovery), retryEmptyText, abortController.signal);
 
           // First round - try with tools
           let pendingToolCalls: ToolCall[];
@@ -1114,7 +1121,22 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
             // useful completion. Retry it for every tool instead of maintaining a
             // partial allowlist of read tools (which omitted list_notes and
             // list_folders).
-            pendingToolCalls = await streamOneRoundWithRetry(true, true);
+            try {
+              pendingToolCalls = await streamOneRoundWithRetry(true, true);
+            } catch (error) {
+              if (!(error instanceof EmptyToolContinuationError) || abortController.signal.aborted) throw error;
+              console.warn("[llm-hub] Retrying final answer without tool definitions, using bounded prior results only");
+              try {
+                // The model receives the prior tool results as reference text.
+                // No more tools are exposed, and this branch never executes another tool.
+                pendingToolCalls = await streamOneRoundWithRetry(false, true, true);
+              } catch (recoveryError) {
+                if (recoveryError instanceof EmptyToolContinuationError) {
+                  throw new Error("Ollama produced no answer after tool results, including a tool-free recovery. Try turning off Ollama thinking or increasing the model context length, and inspect the console's finish reason and tool result sizes.");
+                }
+                throw recoveryError;
+              }
+            }
           }
 
           if (stopped) {
