@@ -1,4 +1,4 @@
-# Mabel Mobile v0.2.0: experimental Android-first companion
+# Mabel Mobile v0.3.0: experimental Android-first companion
 
 This prototype lives in the same **fork** but has its own Obsidian plugin ID,
 `mabel-mobile`. It does **not** replace or modify Local LLM Hub on Windows/Linux.

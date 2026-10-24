@@ -81,7 +81,7 @@ class MobileChat extends ItemView {
     this.renderMessages();
   }
 
-  private appendMessage(message: Message): HTMLElement {
+  private appendMessage(message: Message, plain = false): HTMLElement {
     this.transcript.querySelector(".mabel-mobile-empty")?.remove();
     const row = this.transcript.createDiv({ cls: "mabel-mobile-row mabel-mobile-row-" + message.role });
     if (message.role === "assistant") {
@@ -91,8 +91,12 @@ class MobileChat extends ItemView {
     const bubble = row.createDiv({ cls: "mabel-mobile-bubble mabel-mobile-" + message.role });
     bubble.createDiv({ cls: "mabel-mobile-author", text: message.role === "user" ? "You" : "Mabel" });
     const content = bubble.createDiv();
-    void MarkdownRenderer.render(this.app, message.content, content, "", this)
-      .catch(() => content.setText(message.content));
+    if (plain) {
+      content.setText(message.content);
+    } else {
+      void MarkdownRenderer.render(this.app, message.content, content, "", this)
+        .catch(() => content.setText(message.content));
+    }
     this.transcript.scrollTop = this.transcript.scrollHeight;
     return content;
   }
@@ -112,8 +116,7 @@ class MobileChat extends ItemView {
     const chatId = this.plugin.settings.activeChatId;
     const user: Message = { role: "user", content: text };
     this.appendMessage(user);
-    const output = this.appendMessage({ role: "assistant", content: "…" });
-    output.setText("Connecting to Mabel…");
+    const output = this.appendMessage({ role: "assistant", content: "Connecting…" }, true);
     try {
       const response = await this.plugin.answer(prior, text, this.includeNote.checked, this.useTools.checked, partial => {
         output.setText(partial || "Waiting for response…");
