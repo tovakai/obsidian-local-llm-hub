@@ -75,6 +75,7 @@ import { retryToolRound, EmptyToolContinuationError } from "./chat/toolContinuat
 import { buildToolFreeRecoveryMessages } from "./chat/toolRecovery";
 import { createOllamaRequestWriter } from "../../core/ollamaRequestCapture";
 import MessageList from "./MessageList";
+import { resolveTierModel, validModelTier, type ModelTier } from "src/modelTiers";
 import InputArea, { type InputAreaHandle } from "./InputArea";
 import { t } from "src/i18n";
 import { formatError } from "obsidian-llm-hub-common/core";
@@ -127,7 +128,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   const [showHistory, setShowHistory] = useState(false);
   const [isSidebarWide, setIsSidebarWide] = useState(false);
 
-  const [currentModel, setCurrentModel] = useState(plugin.settings.llmConfig.model);
+  const [selectedModelTier, setSelectedModelTier] = useState<ModelTier>(() => validModelTier(plugin.settings.selectedModelTier));
   const [assistantAvatar, setAssistantAvatar] = useState(plugin.settings.assistantAvatar);
   const [ragSettingNames, setRagSettingNames] = useState<string[]>(plugin.getRagSettingNames());
   const [selectedRagSetting, setSelectedRagSetting] = useState<string | null>(plugin.getSelectedRagSettingName());
@@ -213,9 +214,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   const userInteractedRef = useRef(false);
 
   const baseLlmConfig = plugin.settings.llmConfig;
-  const llmConfig = { ...baseLlmConfig, model: currentModel || baseLlmConfig.model };
+  const llmConfig = { ...baseLlmConfig, model: resolveTierModel(selectedModelTier, plugin.settings.modelTiers, baseLlmConfig.model) };
   const ragAvailable = ragSettingNames.length > 0;
-  const availableModels = plugin.settings.availableModels || [];
 
   useImperativeHandle(ref, () => ({
     addAttachments: (attachments: Attachment[]) => inputAreaRef.current?.addAttachments(attachments),
@@ -234,8 +234,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   useEffect(() => {
     const onSettingsUpdate = () => {
       refreshVaultFiles();
-      // Sync model if changed externally (e.g. in settings)
-      setCurrentModel(plugin.settings.llmConfig.model);
+      // Keep the chosen tier when settings assignments are edited.
+      setSelectedModelTier(validModelTier(plugin.settings.selectedModelTier));
       setAssistantAvatar(plugin.settings.assistantAvatar);
       // Sync RAG settings
       setRagSettingNames(plugin.getRagSettingNames());
@@ -478,9 +478,9 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
     });
   }, [saveActiveOkfBundleIds]);
 
-  const handleModelChange = useCallback((model: string) => {
-    setCurrentModel(model);
-    plugin.settings.llmConfig.model = model;
+  const handleModelTierChange = useCallback((tier: ModelTier) => {
+    setSelectedModelTier(tier);
+    plugin.settings.selectedModelTier = tier;
     void plugin.saveSettings();
   }, [plugin]);
 
@@ -1247,9 +1247,8 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
         isLoading={isLoading || isCompacting}
         isCompacting={isCompacting}
         messageCount={messages.length}
-        currentModel={currentModel}
-        availableModels={availableModels}
-        onModelChange={handleModelChange}
+        selectedModelTier={selectedModelTier}
+        onModelTierChange={handleModelTierChange}
         ragSettingNames={ragSettingNames}
         selectedRagSetting={selectedRagSetting}
         ragSearchAvailable={llmConfig.framework !== "anythingllm"}

@@ -27,3 +27,5 @@
 .mabel-mobile-avatar-preview img { width:54px; height:54px; border-radius:50%; object-fit:cover; }
 
 .mabel-mobile-edit-preview { max-height:26vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--background-secondary); padding:10px; border:1px solid var(--background-modifier-border); border-radius:6px; font-size:.82rem; }
+
+.mabel-mobile-options select { width:auto; max-width:130px; font-size:.82rem; }

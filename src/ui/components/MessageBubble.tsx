@@ -17,7 +17,8 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble(props: MessageBubbleProps) {
-  const bubble = <MessageBubbleView {...props} classPrefix="llm-hub" onOpenWorkflow={() => revealWorkflowTab(props.app, "")} />;
+  const displayMessage = props.message.role === "assistant" ? { ...props.message, model: "Mabel" } : props.message;
+  const bubble = <MessageBubbleView {...props} message={displayMessage} classPrefix="llm-hub" onOpenWorkflow={() => revealWorkflowTab(props.app, "")} />;
   if (props.message.role !== "assistant" || !props.assistantAvatar) return bubble;
   return <div className="llm-hub-avatar-message">
     <img className="llm-hub-avatar-picture" src={props.assistantAvatar} alt="" />

@@ -1,4 +1,4 @@
-# Mabel Mobile v0.4.0: experimental Android-first companion
+# Mabel Mobile v0.5.0: experimental Android-first companion
 
 This prototype lives in the same **fork** but has its own Obsidian plugin ID,
 `mabel-mobile`. It does **not** replace or modify Local LLM Hub on Windows/Linux.
@@ -69,3 +69,12 @@ Closing or rejecting does not write. Updates recheck existing content before
 writing to avoid overwriting a concurrent synced edit. Hidden folders,
 plugin config files, and non-Markdown files are not writable.
 No delete, rename, or silent write tools are enabled.
+
+## Model tiers and assistant name
+
+Both plugins offer **Low / Medium / High** in the chat interface instead of
+exposing raw model tags. Set the associated Ollama model in each plugin's settings.
+Unassigned tiers retain the previously configured model as a fallback.
+Mobile can optionally reuse the desktop tier assignments via synced plugin settings.
+Desktop chat now displays the assistant name **Mabel**, keeping actual model names
+in message metadata for diagnostics; mobile already used Mabel in bubbles.

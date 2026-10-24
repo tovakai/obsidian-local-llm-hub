@@ -19,6 +19,7 @@ import { RagSourceModal } from "./RagSourceModal";
 import SkillSelector from "./SkillSelector";
 import OkfSelector from "./OkfSelector";
 import ModelSelector from "./ModelSelector";
+import { MODEL_TIERS, MODEL_TIER_LABELS, type ModelTier } from "src/modelTiers";
 import { t } from "src/i18n";
 import { isCaretOnFirstLine, isCaretOnLastLine } from "./chat/chatUtils";
 
@@ -38,9 +39,8 @@ interface InputAreaProps {
   isLoading: boolean;
   isCompacting?: boolean;
   messageCount?: number;
-  currentModel: string;
-  availableModels: string[];
-  onModelChange: (model: string) => void;
+  selectedModelTier: ModelTier;
+  onModelTierChange: (tier: ModelTier) => void;
   ragSettingNames: string[];
   selectedRagSetting: string | null;
   onRagSettingChange: (setting: string | null) => void;
@@ -101,9 +101,8 @@ const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(function InputArea
   onCompact,
   isLoading,
   messageCount,
-  currentModel,
-  availableModels,
-  onModelChange,
+  selectedModelTier,
+  onModelTierChange,
   ragSettingNames,
   selectedRagSetting,
   ragSearchAvailable,
@@ -654,17 +653,14 @@ const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(function InputArea
         />}
       footer={<>
 
-      {/* Model & RAG selector */}
-      {(availableModels.length > 1 || ragSettingNames.length > 0) && (
-        <ModelRow classPrefix="llm-hub" label={availableModels.length > 1 ? t("input.model") : undefined}>
-          {availableModels.length > 1 && (
-            <ModelSelector
-              models={availableModels}
-              value={currentModel}
-              onChange={onModelChange}
-              disabled={isLoading || !ragSearchAvailable}
-            />
-          )}
+      {/* Friendly tier selector; actual model IDs are configured in settings. */}
+      <ModelRow classPrefix="llm-hub" label="Model tier">
+        <ModelSelector
+          models={MODEL_TIERS.map(tier => MODEL_TIER_LABELS[tier])}
+          value={MODEL_TIER_LABELS[selectedModelTier]}
+          onChange={(label) => onModelTierChange(MODEL_TIERS.find(tier => MODEL_TIER_LABELS[tier] === label) ?? "medium")}
+          disabled={isLoading || !ragSearchAvailable}
+        />
           {ragSettingNames.length > 0 && (
             <SearchSelector
               classPrefix="llm-hub"
@@ -685,9 +681,8 @@ const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(function InputArea
             />
           )}
         </ModelRow>
-      )}
 
-      {/* Skills selector */}
+{/* Skills selector */}
       {availableSkills && availableSkills.length > 0 && onToggleSkill && (
         <SkillSelector
           skills={availableSkills}
