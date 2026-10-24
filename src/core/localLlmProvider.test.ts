@@ -95,7 +95,7 @@ describe("Ollama continuation diagnostics", () => {
   ] as const)("sets Ollama thinking to $mode and captures the exact request", async ({ mode, expected }) => {
     respond({ message: { content: "Answer" }, done: true });
     const writer = vi.fn().mockResolvedValue(undefined);
-    await collect({ ollamaThinking: mode, captureOllamaRequests: true }, undefined, writer);
+    await collect({ baseUrl: `http://thinking-test-${mode ?? "unset"}:11434`, ollamaThinking: mode, captureOllamaRequests: true }, undefined, writer);
     const sent = streamLines.mock.calls[0][0];
     const body = JSON.parse(sent.body);
     if (expected === undefined) expect(body).not.toHaveProperty("think");
