@@ -354,7 +354,7 @@ export default class MabelMobilePlugin extends Plugin {
 
   async answer(
     prior: Message[], question: string, includeActiveNote: boolean,
-    enableTools: boolean, onText: (text: string) => void,
+    enableTools: boolean, onText: (text: string) => void, onStatus: (status: string) => void,
   ): Promise<string> {
     const systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
     let userContent = question;
@@ -389,6 +389,7 @@ export default class MabelMobilePlugin extends Plugin {
       ? mobileToolDefinitions(this.settings.allowVaultTools, this.settings.allowWebSearch)
       : [];
     if (definitions.length) {
+      onStatus("Checking available tools…");
       for (let round = 0; round < 3; round++) {
         const response = await requestUrl({
           url: this.settings.baseUrl + "/api/chat",
@@ -414,10 +415,10 @@ export default class MabelMobilePlugin extends Plugin {
           );
           messages.push({ role: "tool", tool_name: name, content: output.slice(0, 15000) });
         }
-        onText("Consulting tools…");
+        onStatus("Reading tool results…");
       }
       // Prevent infinite tool recursion. Final response may use the results.
     }
-    return streamOllama(this.settings.baseUrl, payload, onText);
+    return streamOllama(this.settings.baseUrl, payload, onText, onStatus);
   }
 }

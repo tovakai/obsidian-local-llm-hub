@@ -22,8 +22,10 @@ The desktop fork adds an **Assistant profile picture** setting in Local LLM Hub 
 
 - Uses Obsidian's `requestUrl` and Ollama `/api/chat` with `stream:false`.
   The answer appears once completed, without token-by-token streaming.
-- Uses local conversation history (last 60 messages), stored in this
-  companion's own Obsidian plugin data.
+- Saves up to 50 selectable mobile conversations (up to 60 messages each) in
+  the companion's own plugin data. **History** reopens previous chats;
+  **New chat** preserves old conversations.
+  Existing v0.2 single-chat history is migrated automatically.
 - Can reuse the desktop Local LLM Hub system prompt if
   `.obsidian/plugins/local-llm-hub/data.json` is available within the
   phone's vault. Otherwise set the fallback system prompt manually.
@@ -31,7 +33,7 @@ The desktop fork adds an **Assistant profile picture** setting in Local LLM Hub 
 - Optional **Include active note** adds up to 12,000 characters from the Markdown note active when the chat was opened. Note text is not saved in the mobile chat transcript.
 - **v0.2.0:** avatar upload with optional desktop-avatar inheritance, mobile safe-area fixes,
   opt-in read-only note tools and experimental DuckDuckGo web search.
-- **Streaming:** first attempts browser fetch for progressive NDJSON. If Android's
+- **Streaming:** shows a connection status instead of the ambiguous "…" placeholder, then attempts browser fetch for progressive NDJSON. If Android's
   CORS policy blocks the request, falls back to reliable buffered Obsidian requestUrl.
   The Tailscale/Caddy proxy must allow the Android app origin for true streaming.
   Tool-enabled first rounds are buffered so Ollama can return tool calls.
@@ -45,3 +47,5 @@ The desktop fork adds an **Assistant profile picture** setting in Local LLM Hub 
 - This is a **proof of concept**, not a mobile port of the full plugin.
 - Never expose an unauthenticated Ollama server via Tailscale Funnel or
   public port forwarding. Tailscale Serve stays private to your tailnet.
+
+- The composer shows **Include active note** and **Allow read-only tools** above the text box; **Send** shares the input row.
