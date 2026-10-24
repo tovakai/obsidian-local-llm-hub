@@ -65,7 +65,7 @@ export const en = {
   "settings.llmModal.streamIdleTimeout": "Stream idle timeout (seconds)",
   "settings.llmModal.streamIdleTimeoutDesc": "Stop the request when the server sends no streaming data for this many seconds. Leave empty for 120 seconds. Large prompts may need a longer timeout.",
   "settings.llmModal.ollamaThinking": "Ollama thinking mode",
-  "settings.llmModal.ollamaThinkingDesc": "Controls model reasoning for Ollama chat requests, including tool follow-ups. Default keeps the model/server behavior.",
+  "settings.llmModal.ollamaThinkingDesc": "Choose whether Ollama uses thinking for chat requests and tool follow-ups.",
   "settings.llmModal.ollamaThinkingDefault": "Default (model decides)",
   "settings.llmModal.ollamaThinkingOff": "Off (no thinking)",
   "settings.llmModal.ollamaThinkingOn": "On (enable thinking)",
