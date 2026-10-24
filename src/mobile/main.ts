@@ -4,18 +4,19 @@ import { streamOllama } from "./ollamaStream";
 import { mobileToolDefinitions, executeMobileTool, type FunctionCall } from "./mobileTools";
 import { appendConversation, migrateChatState, newConversation, type MobileConversation } from "./chatHistory";
 import { createUserProfileTemplate, getCoreUserContext, USER_PROFILE_PATH } from "../userContext";
+import { MODEL_TIERS, MODEL_TIER_LABELS, validModelTier, resolveTierModel, type ModelTier, type ModelTierAssignments } from "../modelTiers";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; loadUserProfile: boolean; writeMode: "readOnly" | "ask"; chats: MobileConversation[]; activeChatId: string };
+type MobileSettings = { baseUrl: string; model: string; modelTiers: ModelTierAssignments; selectedModelTier: ModelTier; reuseDesktopModelTiers: boolean; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; loadUserProfile: boolean; writeMode: "readOnly" | "ask"; chats: MobileConversation[]; activeChatId: string };
 const VIEW = "mabel-mobile-chat";
-const TITLE = "Mabel Mobile";
-const OPEN_LABEL = "Open Mabel Mobile";
+const TITLE = "Mabel";
+const OPEN_LABEL = "Open Mabel";
 const TALK_PLACEHOLDER = "Talk to Mabel…";
 const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
 const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
-const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, loadUserProfile: true, writeMode: "readOnly", chats: [], activeChatId: "" };
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", modelTiers: {}, selectedModelTier: "medium", reuseDesktopModelTiers: true, thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, loadUserProfile: true, writeMode: "readOnly", chats: [], activeChatId: "" };
 
 class MobileChat extends ItemView {
   private transcript!: HTMLElement;
@@ -23,6 +24,7 @@ class MobileChat extends ItemView {
   private submit!: HTMLButtonElement;
   private includeNote!: HTMLInputElement;
   private useTools!: HTMLInputElement;
+  private tierSelect!: HTMLSelectElement;
   private avatar: string | undefined;
   private busy = false;
 
@@ -52,6 +54,17 @@ class MobileChat extends ItemView {
     this.renderMessages();
     const composer = root.createDiv({ cls: "mabel-mobile-composer" });
     const options = composer.createDiv({ cls: "mabel-mobile-options" });
+    const tierLabel = options.createEl("label");
+    tierLabel.appendText("Model tier");
+    this.tierSelect = tierLabel.createEl("select");
+    for (const tier of MODEL_TIERS) {
+      this.tierSelect.createEl("option", { text: MODEL_TIER_LABELS[tier], value: tier });
+    }
+    this.tierSelect.value = validModelTier(this.plugin.settings.selectedModelTier);
+    this.tierSelect.addEventListener("change", () => {
+      this.plugin.settings.selectedModelTier = validModelTier(this.tierSelect.value);
+      void this.plugin.saveSettings();
+    });
     const noteLabel = options.createEl("label");
     this.includeNote = noteLabel.createEl("input", { type: "checkbox" });
     noteLabel.appendText(" Include active note");
@@ -185,7 +198,8 @@ class MobileSettingsTab extends PluginSettingTab {
           .onChange(async value => { this.plugin.settings.baseUrl = value.trim().replace(/\/+$/, ""); await this.plugin.saveSettings(); });
         input.inputEl.addClass("mabel-mobile-wide");
       });
-    new Setting(root).setName("Model")
+    new Setting(root).setName("Fallback model")
+      .setDesc("Used when a selected tier is not assigned a model.")
       .addText(input => input.setValue(this.plugin.settings.model)
         .onChange(async value => { this.plugin.settings.model = value.trim(); await this.plugin.saveSettings(); }))
       .addButton(btn => btn.setButtonText("Check models").onClick(async () => {
@@ -194,6 +208,22 @@ class MobileSettingsTab extends PluginSettingTab {
           new Notice(names.length ? names.join(", ") : "No Ollama models returned.");
         } catch (error) { new Notice("Could not list models: " + String(error)); }
       }));
+    new Setting(root).setName("Reuse desktop model assignments")
+      .setDesc("Prefer synced desktop tier assignments when available. Mobile assignments are used otherwise.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.reuseDesktopModelTiers)
+        .onChange(async value => { this.plugin.settings.reuseDesktopModelTiers = value; await this.plugin.saveSettings(); }));
+    for (const tier of MODEL_TIERS) {
+      new Setting(root)
+        .setName(MODEL_TIER_LABELS[tier] + " model")
+        .setDesc("Ollama model name for this tier on mobile. Leave blank to use the fallback model.")
+        .addText(input => input
+          .setPlaceholder("Model tag")
+          .setValue(this.plugin.settings.modelTiers?.[tier] ?? "")
+          .onChange(async value => {
+            this.plugin.settings.modelTiers = { ...(this.plugin.settings.modelTiers ?? {}), [tier]: value.trim() };
+            await this.plugin.saveSettings();
+          }));
+    }
     new Setting(root).setName("Thinking mode")
       .addDropdown(dropdown => dropdown.addOption("default", "Model default").addOption("off", "Off").addOption("on", "On")
         .setValue(this.plugin.settings.thinking)
@@ -287,7 +317,7 @@ export default class MabelMobilePlugin extends Plugin {
   async onload(): Promise<void> {
     const stored = await this.loadData() as (Partial<MobileSettings> & { history?: Message[] }) | null;
     const migration = migrateChatState(stored ?? {});
-    this.settings = { ...defaults, ...stored, chats: migration.chats, activeChatId: migration.activeChatId };
+    this.settings = { ...defaults, ...stored, selectedModelTier: validModelTier(stored?.selectedModelTier), chats: migration.chats, activeChatId: migration.activeChatId };
     // The legacy single transcript has been imported into the first conversation.
     delete (this.settings as Partial<MobileSettings> & { history?: Message[] }).history;
     if (migration.migrated) await this.saveSettings();
@@ -346,12 +376,12 @@ export default class MabelMobilePlugin extends Plugin {
     await this.saveSettings();
   }
 
-  private async desktopSettings(): Promise<{ systemPrompt?: string; assistantAvatar?: string } | undefined> {
+  private async desktopSettings(): Promise<{ systemPrompt?: string; assistantAvatar?: string; modelTiers?: ModelTierAssignments } | undefined> {
     try {
       const path = this.app.vault.configDir + "/plugins/local-llm-hub/data.json";
       if (!await this.app.vault.adapter.exists(path)) return undefined;
       const data: unknown = JSON.parse(await this.app.vault.adapter.read(path));
-      if (data && typeof data === "object") return data as { systemPrompt?: string; assistantAvatar?: string };
+      if (data && typeof data === "object") return data as { systemPrompt?: string; assistantAvatar?: string; modelTiers?: ModelTierAssignments };
     } catch { /* Settings may not be synced to the phone. */ }
     return undefined;
   }
@@ -368,6 +398,16 @@ export default class MabelMobilePlugin extends Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) {
       if (leaf.view instanceof MobileChat) await leaf.view.refreshAvatar();
     }
+  }
+
+  private async resolveSelectedModel(): Promise<string> {
+    const tier = validModelTier(this.settings.selectedModelTier);
+    const desktop = this.settings.reuseDesktopModelTiers ? await this.desktopSettings() : undefined;
+    const sharedModel = desktop?.modelTiers?.[tier];
+    const assignments = typeof sharedModel === "string" && sharedModel.trim()
+      ? desktop?.modelTiers
+      : this.settings.modelTiers;
+    return resolveTierModel(tier, assignments, this.settings.model);
   }
 
   async listModels(): Promise<string[]> {
@@ -406,7 +446,7 @@ export default class MabelMobilePlugin extends Plugin {
     messages.push(...prior);
     messages.push({ role: "user", content: userContent });
     const payload: { model: string; messages: WireMessage[]; think?: boolean } = {
-      model: this.settings.model, messages,
+      model: await this.resolveSelectedModel(), messages,
     };
     if (this.settings.thinking !== "default") payload.think = this.settings.thinking === "on";
 
