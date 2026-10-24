@@ -11,7 +11,7 @@
 .mabel-mobile-user { background:var(--background-primary-alt); }
 .mabel-mobile-author { font-weight:700; font-size:.75rem; opacity:.7; margin-bottom:6px; }
 .mabel-mobile-bubble p:last-child { margin-bottom:0; }
-.mabel-mobile-composer { border-top:1px solid var(--background-modifier-border); padding:9px 12px calc(20px + env(safe-area-inset-bottom, 0px)); display:flex; flex-direction:column; gap:8px; flex-shrink:0; background:var(--background-primary); }
+.mabel-mobile-composer { border-top:1px solid var(--background-modifier-border); padding:9px 12px calc(72px + env(safe-area-inset-bottom, 0px)); display:flex; flex-direction:column; gap:8px; flex-shrink:0; background:var(--background-primary); }
 .mabel-mobile-composer textarea { width:100%; resize:vertical; min-height:55px; max-height:24vh; }
 .mabel-mobile-composer button { align-self:flex-end; margin-right:4px; margin-bottom:5px; }
 .mabel-mobile-composer label { display:flex; align-items:center; gap:6px; font-size:.82rem; }

@@ -14,6 +14,10 @@ This prototype lives in the same **fork** but has its own Obsidian plugin ID,
    then ensure Tailscale is connected on the phone.
 6. Open the Mabel Mobile ribbon button or command.
 
+## Desktop avatar
+
+The desktop fork adds an **Assistant profile picture** setting in Local LLM Hub chat settings. Pick a PNG/JPG/WebP/GIF image. It is resized to a 192px square PNG and shown beside assistant messages, including streaming responses. Desktop and mobile image settings remain independent, but mobile can reuse the desktop image if the plugin data is synced.
+
 ## Features and limitations
 
 - Uses Obsidian's `requestUrl` and Ollama `/api/chat` with `stream:false`.

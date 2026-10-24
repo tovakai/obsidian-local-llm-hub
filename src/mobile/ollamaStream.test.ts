@@ -41,10 +41,11 @@ describe("mobile Ollama streaming", () => {
   });
 
   it("never resends a partly streamed request", async () => {
+    let reads = 0;
     const bodyStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode(JSON.stringify({ message: { content: "Partial" } }) + "\n"));
-        controller.error(new Error("broken connection"));
+      pull(controller) {
+        if (reads++ === 0) controller.enqueue(encoder.encode(JSON.stringify({ message: { content: "Partial" } }) + "\n"));
+        else controller.error(new Error("broken connection"));
       },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: bodyStream }));
