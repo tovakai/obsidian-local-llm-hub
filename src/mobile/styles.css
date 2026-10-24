@@ -13,3 +13,4 @@
 .mabel-mobile-error { color:var(--text-error); padding:10px; }
 .mabel-mobile-wide { width:min(100%,24rem); }
 .mabel-mobile-prompt { width:100%; min-height:140px; }
+.mabel-mobile-composer label { display:flex; align-items:center; gap:6px; font-size:.85rem; }

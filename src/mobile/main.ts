@@ -194,7 +194,10 @@ export default class MabelMobilePlugin extends Plugin {
     if (includeActiveNote) {
       const path = this.lastNotePath;
       const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
-      if (file instanceof TFile && file.extension === "md") {
+      if (!(file instanceof TFile) || file.extension !== "md") {
+        throw new Error("Open a Markdown note before launching Mabel to include its contents.");
+      }
+      {
         const noteText = await this.app.vault.cachedRead(file);
         userContent += "\n\n[Obsidian note: " + file.path + "]\n" + noteText.slice(0, 12000);
         if (noteText.length > 12000) userContent += "\n[Note truncated]";
