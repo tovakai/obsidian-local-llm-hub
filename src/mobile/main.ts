@@ -1,23 +1,26 @@
 import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
 import { readAvatarImage } from "../avatarImage";
+import { streamOllama } from "./ollamaStream";
+import { mobileToolDefinitions, executeMobileTool, type FunctionCall } from "./mobileTools";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; history: Message[] };
+type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; allowVaultTools: boolean; allowWebSearch: boolean; history: Message[] };
 const VIEW = "mabel-mobile-chat";
 const TITLE = "Mabel Mobile";
 const OPEN_LABEL = "Open Mabel Mobile";
 const TALK_PLACEHOLDER = "Talk to Mabel…";
 const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
 const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
-const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, history: [] };
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, allowVaultTools: true, allowWebSearch: true, history: [] };
 
 class MobileChat extends ItemView {
   private transcript!: HTMLElement;
   private entry!: HTMLTextAreaElement;
   private submit!: HTMLButtonElement;
   private includeNote!: HTMLInputElement;
+  private useTools!: HTMLInputElement;
   private avatar: string | undefined;
   private busy = false;
 
@@ -46,6 +49,9 @@ class MobileChat extends ItemView {
     const noteLabel = composer.createEl("label");
     this.includeNote = noteLabel.createEl("input", { type: "checkbox" });
     noteLabel.appendText(" Include active note (read only)");
+    const toolLabel = composer.createEl("label");
+    this.useTools = toolLabel.createEl("input", { type: "checkbox" });
+    toolLabel.appendText(" Allow tools for this message (read-only vault / web)");
     this.submit = composer.createEl("button", { text: "Send", cls: "mod-cta" });
     this.submit.addEventListener("click", () => { void this.send(); });
     await Promise.resolve();
@@ -65,7 +71,7 @@ class MobileChat extends ItemView {
     this.renderMessages();
   }
 
-  private appendMessage(message: Message): void {
+  private appendMessage(message: Message): HTMLElement {
     this.transcript.querySelector(".mabel-mobile-empty")?.remove();
     const row = this.transcript.createDiv({ cls: "mabel-mobile-row mabel-mobile-row-" + message.role });
     if (message.role === "assistant") {
@@ -78,6 +84,7 @@ class MobileChat extends ItemView {
     void MarkdownRenderer.render(this.app, message.content, content, "", this)
       .catch(() => content.setText(message.content));
     this.transcript.scrollTop = this.transcript.scrollHeight;
+    return content;
   }
 
   private async send(): Promise<void> {
@@ -94,12 +101,19 @@ class MobileChat extends ItemView {
     const prior = this.plugin.settings.history.slice();
     const user: Message = { role: "user", content: text };
     this.appendMessage(user);
+    const output = this.appendMessage({ role: "assistant", content: "…" });
+    output.setText("…");
     try {
-      const reply: Message = { role: "assistant", content: await this.plugin.answer(prior, text, this.includeNote.checked) };
-      this.appendMessage(reply);
-      await this.plugin.addHistory(user, reply);
+      const response = await this.plugin.answer(prior, text, this.includeNote.checked, this.useTools.checked, partial => {
+        output.setText(partial || "…");
+        this.transcript.scrollTop = this.transcript.scrollHeight;
+      });
+      output.empty();
+      await MarkdownRenderer.render(this.app, response, output, "", this);
+      await this.plugin.addHistory(user, { role: "assistant", content: response });
     } catch (error) {
-      this.transcript.createDiv({ cls: "mabel-mobile-error", text: "Request failed: " + String(error) });
+      output.setText("Request failed: " + String(error));
+      output.addClass("mabel-mobile-error");
     } finally {
       this.busy = false;
       this.submit.disabled = false;
@@ -175,6 +189,14 @@ class MobileSettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           await this.plugin.refreshChatAvatar();
         }));
+    new Setting(root).setName("Allow vault tools")
+      .setDesc("Read-only note search, listing, and reading, enabled only when requested in the chat.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.allowVaultTools)
+        .onChange(async value => { this.plugin.settings.allowVaultTools = value; await this.plugin.saveSettings(); }));
+    new Setting(root).setName("Allow web search")
+      .setDesc("Experimental DuckDuckGo search. Queries are sent to DuckDuckGo only when chat tools are enabled.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.allowWebSearch)
+        .onChange(async value => { this.plugin.settings.allowWebSearch = value; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Reuse desktop persona")
       .setDesc("Read the system prompt from the desktop Local LLM Hub settings if that file is synced to this vault.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.reuseDesktopPrompt)
@@ -251,7 +273,10 @@ export default class MabelMobilePlugin extends Plugin {
     return json.models?.map(model => model.name).filter((name): name is string => !!name) ?? [];
   }
 
-  async answer(prior: Message[], question: string, includeActiveNote = false): Promise<string> {
+  async answer(
+    prior: Message[], question: string, includeActiveNote: boolean,
+    enableTools: boolean, onText: (text: string) => void,
+  ): Promise<string> {
     const systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
     let userContent = question;
     if (includeActiveNote) {
@@ -260,27 +285,60 @@ export default class MabelMobilePlugin extends Plugin {
       if (!(file instanceof TFile) || file.extension !== "md") {
         throw new Error("Open a Markdown note before launching Mabel to include its contents.");
       }
-      {
-        const noteText = await this.app.vault.cachedRead(file);
-        userContent += "\n\n[Obsidian note: " + file.path + "]\n" + noteText.slice(0, 12000);
-        if (noteText.length > 12000) userContent += "\n[Note truncated]";
-      }
+      const noteText = await this.app.vault.cachedRead(file);
+      userContent += "\n\n[Obsidian note: " + file.path + "]\n" + noteText.slice(0, 12000);
+      if (noteText.length > 12000) userContent += "\n[Note truncated]";
     }
-    const messages: Array<{ role: "system" | Role; content: string }> = [];
+
+    type WireMessage = {
+      role: "system" | "user" | "assistant" | "tool";
+      content: string;
+      tool_name?: string;
+      tool_calls?: FunctionCall[];
+    };
+    const messages: WireMessage[] = [];
     if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-    messages.push(...prior, { role: "user", content: userContent });
-    const payload: { model: string; messages: typeof messages; stream: boolean; think?: boolean } = {
-      model: this.settings.model, messages, stream: false,
+    messages.push(...prior);
+    messages.push({ role: "user", content: userContent });
+    const payload: { model: string; messages: WireMessage[]; think?: boolean } = {
+      model: this.settings.model, messages,
     };
     if (this.settings.thinking !== "default") payload.think = this.settings.thinking === "on";
-    const response = await requestUrl({
-      url: this.settings.baseUrl + "/api/chat",
-      method: "POST",
-      contentType: "application/json",
-      body: JSON.stringify(payload),
-    });
-    const json = response.json as { message?: { content?: string } };
-    if (!json.message?.content?.trim()) throw new Error("Ollama returned an empty response.");
-    return json.message.content;
+
+    // Mobile tools are intentionally opt-in, local, and read-only.
+    const definitions = enableTools
+      ? mobileToolDefinitions(this.settings.allowVaultTools, this.settings.allowWebSearch)
+      : [];
+    if (definitions.length) {
+      for (let round = 0; round < 3; round++) {
+        const response = await requestUrl({
+          url: this.settings.baseUrl + "/api/chat",
+          method: "POST", contentType: "application/json",
+          body: JSON.stringify({ ...payload, tools: definitions, stream: false }),
+        });
+        const json = response.json as { message?: { content?: string; tool_calls?: FunctionCall[] } };
+        const result = json.message;
+        if (!result) throw new Error("Ollama returned no message.");
+        const calls = result.tool_calls?.slice(0, 4) ?? [];
+        if (!calls.length) {
+          if (!result.content?.trim()) throw new Error("Ollama returned an empty reply.");
+          onText(result.content);
+          return result.content;
+        }
+        messages.push({ role: "assistant", content: result.content ?? "", tool_calls: calls });
+        for (const call of calls) {
+          const name = call.function?.name ?? "";
+          const args = call.function?.arguments;
+          const argumentsObject = args && typeof args === "object" ? args : {};
+          const output = await executeMobileTool(
+            this.app, name, argumentsObject, this.settings.allowVaultTools, this.settings.allowWebSearch,
+          );
+          messages.push({ role: "tool", tool_name: name, content: output.slice(0, 15000) });
+        }
+        onText("Consulting tools…");
+      }
+      // Prevent infinite tool recursion. Final response may use the results.
+    }
+    return streamOllama(this.settings.baseUrl, payload, onText);
   }
 }
