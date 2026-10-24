@@ -22,7 +22,8 @@ export function readAvatarImage(file: File): Promise<string> {
         ctx.drawImage(image, (192 - width) / 2, (192 - height) / 2, width, height);
         resolve(canvas.toDataURL("image/png"));
       };
-      image.src = String(reader.result);
+      if (typeof reader.result !== "string") { reject(new Error("Could not read image data.")); return; }
+      image.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
