@@ -410,3 +410,15 @@ This plugin is the **local-only sibling** of [obsidian-gemini-helper](https://gi
 | Cost | Free / Pay-per-use | **Free forever** (your hardware) |
 
 Choose Gemini Helper when you want cutting-edge cloud models. Choose Local LLM Hub when **privacy is non-negotiable**.
+
+
+## Mabel Scheduler (fork feature)
+
+The **Schedule** tab in Mabel's chat sidebar manages scheduled local actions. Open it with the tab or with Obsidian's **Open schedules** command. Choose a one-time, daily, weekly or interval cadence (15 minutes minimum), and create either:
+
+- **Reminder:** Shows an Obsidian notice at the due time and archives the reminder in the vault.
+- **AI prompt:** Runs the configured local chat model without tools and archives its text response. No shell, MCP, workflow or vault-edit permission is implied by a scheduled prompt.
+
+You can pause/resume, edit, delete, run immediately, and open the most recent run note. Results are saved under `<workspace>/scheduler/runs/<task-id>/`. Mabel can also *propose* a schedule from chat using `propose_schedule`, which pre-populates the Schedule editor. **The schedule is not created until you explicitly click Save.**
+
+**Runtime limitation:** The scheduler runs while Obsidian desktop is active. On reopening, overdue one-time jobs and one occurrence of each overdue recurring job will run, but missed recurring ticks are not replayed. This is not yet a headless OS scheduler and may not be suitable for urgent notifications. Scheduling has no dependence on a secondary machine, but the configured local LLM must be reachable when an AI job fires.
