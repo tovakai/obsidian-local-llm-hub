@@ -2430,4 +2430,15 @@ body.llm-hub-hide-workspace-folder .nav-folder:has(> .nav-folder-title[data-path
 .llm-hub-avatar-message-body { flex: 1; min-width: 0; }
 .llm-hub-avatar-setting-preview { margin: 4px 0 8px; display: flex; min-height: 50px; align-items: center; }
 .llm-hub-avatar-preview-image { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; }
+.llm-hub-thinking-effort {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 8px;
+  flex-wrap: wrap;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.llm-hub-thinking-effort input[type="range"] { flex: 1 1 130px; min-width: 90px; max-width: 210px; }
+.llm-hub-thinking-effort-label { min-width: 108px; }
 /* @chat-ui-styles */

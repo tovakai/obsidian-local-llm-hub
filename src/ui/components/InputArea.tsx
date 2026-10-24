@@ -20,6 +20,7 @@ import SkillSelector from "./SkillSelector";
 import OkfSelector from "./OkfSelector";
 import ModelSelector from "./ModelSelector";
 import { MODEL_TIERS, MODEL_TIER_LABELS, type ModelTier } from "src/modelTiers";
+import { THINKING_EFFORTS, THINKING_LABELS, type ThinkingEffort } from "src/thinkingEffort";
 import { t } from "src/i18n";
 import { isCaretOnFirstLine, isCaretOnLastLine } from "./chat/chatUtils";
 
@@ -41,6 +42,8 @@ interface InputAreaProps {
   messageCount?: number;
   selectedModelTier: ModelTier;
   onModelTierChange: (tier: ModelTier) => void;
+  thinkingEffort: ThinkingEffort;
+  onThinkingEffortChange: (effort: ThinkingEffort) => void;
   ragSettingNames: string[];
   selectedRagSetting: string | null;
   onRagSettingChange: (setting: string | null) => void;
@@ -103,6 +106,8 @@ const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(function InputArea
   messageCount,
   selectedModelTier,
   onModelTierChange,
+  thinkingEffort,
+  onThinkingEffortChange,
   ragSettingNames,
   selectedRagSetting,
   ragSearchAvailable,
@@ -682,7 +687,16 @@ const InputArea = forwardRef<InputAreaHandle, InputAreaProps>(function InputArea
           )}
         </ModelRow>
 
-{/* Skills selector */}
+<label className="llm-hub-thinking-effort" title="Native Ollama levels where supported; brief reasoning is best effort on models with on/off thinking.">
+        <span className="llm-hub-thinking-effort-label">Thinking: {THINKING_LABELS[thinkingEffort]}</span>
+        <input type="range" min={0} max={3} step={1}
+          value={THINKING_EFFORTS.indexOf(thinkingEffort)}
+          onChange={event => onThinkingEffortChange(THINKING_EFFORTS[Number(event.target.value)] ?? "standard")}
+          disabled={isLoading}
+          aria-label="Thinking effort" />
+      </label>
+
+      {/* Skills selector */}
       {availableSkills && availableSkills.length > 0 && onToggleSkill && (
         <SkillSelector
           skills={availableSkills}
