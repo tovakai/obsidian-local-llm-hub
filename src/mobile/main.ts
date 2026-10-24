@@ -1,22 +1,24 @@
 import { ItemView, MarkdownRenderer, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
+import { readAvatarImage } from "../avatarImage";
 
 type Role = "user" | "assistant";
 type Message = { role: Role; content: string };
 type Thinking = "default" | "off" | "on";
-type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; history: Message[] };
+type MobileSettings = { baseUrl: string; model: string; thinking: Thinking; systemPrompt: string; reuseDesktopPrompt: boolean; reuseDesktopAvatar: boolean; avatar?: string; history: Message[] };
 const VIEW = "mabel-mobile-chat";
 const TITLE = "Mabel Mobile";
 const OPEN_LABEL = "Open Mabel Mobile";
 const TALK_PLACEHOLDER = "Talk to Mabel…";
 const CONFIG_NOTICE = "Configure the Ollama URL and model in Mabel Mobile settings.";
 const REMOTE_HINT = "Use your private Tailscale Serve HTTPS address to reach Ollama on the desktop. Do not use Funnel.";
-const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, history: [] };
+const defaults: MobileSettings = { baseUrl: "", model: "mabel-qwen-64k:latest", thinking: "off", systemPrompt: "", reuseDesktopPrompt: true, reuseDesktopAvatar: true, history: [] };
 
 class MobileChat extends ItemView {
   private transcript!: HTMLElement;
   private entry!: HTMLTextAreaElement;
   private submit!: HTMLButtonElement;
   private includeNote!: HTMLInputElement;
+  private avatar: string | undefined;
   private busy = false;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: MabelMobilePlugin) { super(leaf); }
@@ -34,6 +36,7 @@ class MobileChat extends ItemView {
       if (!this.busy) void this.plugin.clearHistory().then(() => this.renderMessages());
     });
     this.transcript = root.createDiv({ cls: "mabel-mobile-transcript" });
+    this.avatar = await this.plugin.resolveAvatar();
     this.renderMessages();
     const composer = root.createDiv({ cls: "mabel-mobile-composer" });
     this.entry = composer.createEl("textarea", { attr: { rows: "3", placeholder: TALK_PLACEHOLDER, "aria-label": "Message" } });
@@ -57,9 +60,19 @@ class MobileChat extends ItemView {
     }
   }
 
+  async refreshAvatar(): Promise<void> {
+    this.avatar = await this.plugin.resolveAvatar();
+    this.renderMessages();
+  }
+
   private appendMessage(message: Message): void {
     this.transcript.querySelector(".mabel-mobile-empty")?.remove();
-    const bubble = this.transcript.createDiv({ cls: "mabel-mobile-bubble mabel-mobile-" + message.role });
+    const row = this.transcript.createDiv({ cls: "mabel-mobile-row mabel-mobile-row-" + message.role });
+    if (message.role === "assistant") {
+      if (this.avatar) row.createEl("img", { cls: "mabel-mobile-avatar", attr: { src: this.avatar, alt: "" } });
+      else row.createDiv({ cls: "mabel-mobile-avatar mabel-mobile-avatar-fallback", text: "M" });
+    }
+    const bubble = row.createDiv({ cls: "mabel-mobile-bubble mabel-mobile-" + message.role });
     bubble.createDiv({ cls: "mabel-mobile-author", text: message.role === "user" ? "You" : "Mabel" });
     const content = bubble.createDiv();
     void MarkdownRenderer.render(this.app, message.content, content, "", this)
@@ -123,6 +136,45 @@ class MobileSettingsTab extends PluginSettingTab {
       .addDropdown(dropdown => dropdown.addOption("default", "Model default").addOption("off", "Off").addOption("on", "On")
         .setValue(this.plugin.settings.thinking)
         .onChange(async value => { this.plugin.settings.thinking = value as Thinking; await this.plugin.saveSettings(); }));
+    const avatarPreview = root.createDiv({ cls: "mabel-mobile-avatar-preview" });
+    const showAvatar = () => {
+      avatarPreview.empty();
+      if (this.plugin.settings.avatar) avatarPreview.createEl("img", { attr: { src: this.plugin.settings.avatar, alt: "Assistant avatar preview" } });
+      else avatarPreview.createSpan({ text: "No local avatar chosen" });
+    };
+    showAvatar();
+    const avatarPicker = root.createEl("input", { type: "file" });
+    avatarPicker.hidden = true;
+    avatarPicker.accept = "image/png,image/jpeg,image/webp,image/gif";
+    avatarPicker.addEventListener("change", () => {
+      const selected = avatarPicker.files?.[0];
+      if (!selected) return;
+      void readAvatarImage(selected).then(async avatar => {
+        this.plugin.settings.avatar = avatar;
+        await this.plugin.saveSettings();
+        showAvatar();
+        await this.plugin.refreshChatAvatar();
+      }).catch(error => { new Notice(String(error)); }).finally(() => { avatarPicker.value = ""; });
+    });
+    new Setting(root).setName("Assistant profile picture")
+      .setDesc("Upload a picture to show beside Mabel's messages.")
+      .addButton(btn => btn.setButtonText("Choose image").onClick(() => avatarPicker.click()))
+      .addButton(btn => btn.setButtonText("Clear image").onClick(() => {
+        void (async () => {
+          delete this.plugin.settings.avatar;
+          await this.plugin.saveSettings();
+          showAvatar();
+          await this.plugin.refreshChatAvatar();
+        })();
+      }));
+    new Setting(root).setName("Reuse desktop avatar")
+      .setDesc("Prefer the desktop avatar when its plugin settings are synced.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.reuseDesktopAvatar)
+        .onChange(async value => {
+          this.plugin.settings.reuseDesktopAvatar = value;
+          await this.plugin.saveSettings();
+          await this.plugin.refreshChatAvatar();
+        }));
     new Setting(root).setName("Reuse desktop persona")
       .setDesc("Read the system prompt from the desktop Local LLM Hub settings if that file is synced to this vault.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.reuseDesktopPrompt)
@@ -168,17 +220,28 @@ export default class MabelMobilePlugin extends Plugin {
     await this.saveSettings();
   }
 
-  private async desktopSystemPrompt(): Promise<string | undefined> {
-    if (!this.settings.reuseDesktopPrompt) return undefined;
+  private async desktopSettings(): Promise<{ systemPrompt?: string; assistantAvatar?: string } | undefined> {
     try {
       const path = this.app.vault.configDir + "/plugins/local-llm-hub/data.json";
       if (!await this.app.vault.adapter.exists(path)) return undefined;
       const data: unknown = JSON.parse(await this.app.vault.adapter.read(path));
-      if (data && typeof data === "object" && "systemPrompt" in data && typeof data.systemPrompt === "string") {
-        return data.systemPrompt;
-      }
+      if (data && typeof data === "object") return data as { systemPrompt?: string; assistantAvatar?: string };
     } catch { /* Settings may not be synced to the phone. */ }
     return undefined;
+  }
+
+  async resolveAvatar(): Promise<string | undefined> {
+    if (this.settings.reuseDesktopAvatar) {
+      const settings = await this.desktopSettings();
+      if (settings?.assistantAvatar?.startsWith("data:image/")) return settings.assistantAvatar;
+    }
+    return this.settings.avatar;
+  }
+
+  async refreshChatAvatar(): Promise<void> {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW)) {
+      if (leaf.view instanceof MobileChat) await leaf.view.refreshAvatar();
+    }
   }
 
   async listModels(): Promise<string[]> {
@@ -189,7 +252,7 @@ export default class MabelMobilePlugin extends Plugin {
   }
 
   async answer(prior: Message[], question: string, includeActiveNote = false): Promise<string> {
-    const systemPrompt = await this.desktopSystemPrompt() || this.settings.systemPrompt;
+    const systemPrompt = (this.settings.reuseDesktopPrompt ? (await this.desktopSettings())?.systemPrompt : undefined) || this.settings.systemPrompt;
     let userContent = question;
     if (includeActiveNote) {
       const path = this.lastNotePath;
