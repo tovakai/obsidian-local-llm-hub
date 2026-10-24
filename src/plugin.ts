@@ -26,6 +26,7 @@ import { streamWorkflowChat } from "src/core/workflowChat";
 import { WORKFLOW_SPECIFICATION } from "src/workflow/workflowSpec";
 import { SKILLS_FOLDER } from "src/types";
 import { handleCommandNode } from "src/workflow/handlers/command";
+import { ScheduledTaskManager } from "src/core/scheduler";
 import { configureAgentPluginBase } from "obsidian-llm-hub-common/skills";
 
 import { EditHistoryModal } from "src/ui/components/EditHistoryModal";
@@ -90,6 +91,7 @@ export class LocalLlmHubPlugin extends Plugin {
   wsManager!: WorkspaceStateManager;
   encryptionManager!: EncryptionManager;
   workflowManager!: WorkflowManager;
+  scheduler!: ScheduledTaskManager;
   mcpManager = new McpManager();
   selectionManager!: SelectionManager;
   /** In-memory only – cleared on Obsidian restart */
@@ -175,6 +177,7 @@ export class LocalLlmHubPlugin extends Plugin {
 
     void this.loadSettings().then(() => {
       this.settingsEmitter.emit("settings-updated", this.settings);
+      this.scheduler.start();
 
       // Initialize edit history manager
       initEditHistoryManager(this.app, this.settings.editHistory);
@@ -201,6 +204,7 @@ export class LocalLlmHubPlugin extends Plugin {
 
     // Initialize workflow manager after its selection dependency is ready
     this.workflowManager = new WorkflowManager(this, this.selectionManager);
+    this.scheduler = new ScheduledTaskManager(this);
 
     // Settings tab
     this.addSettingTab(new SettingsTab(this.app, this));
@@ -345,6 +349,12 @@ export class LocalLlmHubPlugin extends Plugin {
       callback: () => {
         this.toggleChatView();
       },
+    });
+
+    this.addCommand({
+      id: "open-schedules",
+      name: "Open schedules",
+      callback: () => { void this.activateChatView("schedule"); },
     });
 
     // Text processing commands
@@ -559,6 +569,7 @@ export class LocalLlmHubPlugin extends Plugin {
 
   onunload(): void {
     this.workflowManager.cleanup();
+    this.scheduler?.stop();
     cryptoCache.clear();
     void this.mcpManager.disconnectAll();
   }
@@ -566,6 +577,13 @@ export class LocalLlmHubPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const data = await this.loadData() as Partial<LocalLlmHubSettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    if (!Array.isArray(this.settings.scheduledTasks)) this.settings.scheduledTasks = [];
+    for (const task of this.settings.scheduledTasks) {
+      if (task.lastStatus === "running") {
+        task.lastStatus = "failed";
+        task.lastError = "Previous run was interrupted by an Obsidian restart.";
+      }
+    }
     this.settings.voiceChat = { ...DEFAULT_SETTINGS.voiceChat, ...data?.voiceChat };
     let needsSave = false;
     if (data && Object.keys(data).length > 0 && data.maxSavedChatHistories === undefined) {
@@ -806,7 +824,7 @@ export class LocalLlmHubPlugin extends Plugin {
     }
   }
 
-  async activateChatView(tab?: "chat" | "workflow"): Promise<void> {
+  async activateChatView(tab?: "chat" | "workflow" | "schedule"): Promise<void> {
     // Capture selection before switching focus
     this.selectionManager.captureSelection();
 

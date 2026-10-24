@@ -259,6 +259,26 @@ export { SKILL_WORKFLOW_TOOL_NAME } from "obsidian-llm-hub-common/skills";
 // told about tools in the OpenAI wire shape, hence the wrap.
 export const skillWorkflowTool: ToolDefinition = toOpenAiTool(createSkillWorkflowTool({ readSkillMarker: false }));
 
+const proposeSchedule: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "propose_schedule",
+    description: "Draft a reminder or recurring local-model task for the user to approve in Mabel's Schedule tab. This does NOT create the schedule automatically. Use when the user asks to be reminded, to schedule a recurring prompt, or to perform a prompt later. Require a specific local date and time; if unsure, ask the user.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short task title" },
+        prompt: { type: "string", description: "The reminder or scheduled model instruction" },
+        kind: { type: "string", enum: ["reminder", "prompt"], description: "Reminder notification, or text generation by the local model" },
+        repeat: { type: "string", enum: ["once", "daily", "weekly", "interval"], description: "Recurrence" },
+        startsAtLocal: { type: "string", description: "First run in the user's local time: YYYY-MM-DDTHH:mm (no Z or UTC offset)" },
+        intervalMinutes: { type: "integer", description: "For interval recurrence only, 15-10080" },
+      },
+      required: ["title", "prompt", "kind", "repeat", "startsAtLocal"],
+    },
+  },
+};
+
 // Search tools (excluded in "noSearch" mode)
 const searchToolNames = new Set(["search_notes", "list_notes"]);
 
@@ -266,7 +286,7 @@ const searchToolNames = new Set(["search_notes", "list_notes"]);
 const allVaultTools: ToolDefinition[] = [
   readTimeline, readNoteTool, createNote, updateNote, renameNote, createFolder,
   searchNotes, listNotes, listFolders, getActiveNote, proposeEdit, deleteNote,
-  bulkProposeEdit, bulkDeleteNotes, bulkRenameNotes,
+  bulkProposeEdit, bulkDeleteNotes, bulkRenameNotes, proposeSchedule,
 ];
 
 /**

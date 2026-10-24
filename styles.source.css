@@ -2442,3 +2442,139 @@ body.llm-hub-hide-workspace-folder .nav-folder:has(> .nav-folder-title[data-path
 .llm-hub-thinking-effort input[type="range"] { flex: 1 1 130px; min-width: 90px; max-width: 210px; }
 .llm-hub-thinking-effort-label { min-width: 108px; }
 /* @chat-ui-styles */
+
+/* ===== Mabel Scheduler ===== */
+.llm-hub-tab:has(> svg) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.llm-hub-scheduler {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 15px 14px 28px;
+  color: var(--text-normal); background: var(--background-primary); scrollbar-gutter: stable;
+}
+.llm-hub-scheduler button { cursor: pointer; }
+.llm-hub-scheduler-hero {
+  border: 1px solid var(--background-modifier-border);
+  background: linear-gradient(144deg, color-mix(in srgb, var(--interactive-accent) 11%, var(--background-secondary)), var(--background-secondary) 70%);
+  padding: 19px 17px; border-radius: 18px; position: relative;
+  box-shadow: 0 7px 25px rgba(0, 0, 0, .07);
+}
+.llm-hub-scheduler-eyebrow { display: flex; align-items: center; gap: 6px; color: var(--text-accent); font-size: 10px; font-weight: 750; letter-spacing: .11em; }
+.llm-hub-scheduler-hero h2 { font-size: clamp(18px, 4vw, 23px); line-height: 1.15; letter-spacing: -.03em; margin: 12px 0 6px; font-weight: 750; }
+.llm-hub-scheduler-hero p { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0; }
+.llm-hub-scheduler-overview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.llm-hub-scheduler-stat {
+  border-radius: 12px; padding: 9px 10px; background: color-mix(in srgb, var(--background-primary) 65%, transparent);
+  border: 1px solid var(--background-modifier-border);
+  min-width: 98px; flex: 1; display: flex; align-items: center; gap: 8px;
+}
+.llm-hub-scheduler-stat strong { font-size: 25px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.llm-hub-scheduler-stat span { color: var(--text-muted); font-size: 11px; }
+.llm-hub-scheduler-next { flex: 1.5; min-width: 140px; }
+.llm-hub-scheduler-next svg { color: var(--text-accent); flex-shrink: 0; }
+.llm-hub-scheduler-add {
+  width: 100%; display: flex; gap: 8px; align-items: center; justify-content: center;
+  padding: 11px 13px; margin-top: 14px; font-size: 12px; font-weight: 680;
+  background: var(--interactive-accent); color: var(--text-on-accent);
+  border: 0; border-radius: 11px; box-shadow: 0 4px 12px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+}
+.llm-hub-scheduler-add:hover { background: var(--interactive-accent-hover); }
+.llm-hub-scheduler-list-heading { display: flex; align-items: center; justify-content: space-between; margin: 20px 2px 10px; font-size: 13px; font-weight: 700; }
+.llm-hub-scheduler-list-heading > span:first-child { display: flex; align-items: center; gap: 8px; }
+.llm-hub-scheduler-list-heading svg { color: var(--text-accent); }
+.llm-hub-scheduler-count { color: var(--text-muted); font-size: 11px; font-weight: 500; }
+.llm-hub-scheduler-card {
+  border: 1px solid var(--background-modifier-border); border-radius: 14px;
+  padding: 13px; margin-bottom: 9px; background: var(--background-secondary);
+  transition: border-color .18s, transform .18s;
+}
+.llm-hub-scheduler-card:hover { border-color: var(--background-modifier-border-hover, var(--text-faint)); }
+.llm-hub-scheduler-card.is-paused { opacity: .68; }
+.llm-hub-scheduler-card-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.llm-hub-scheduler-type { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; }
+.llm-hub-scheduler-type.is-ai { color: var(--text-accent); background: color-mix(in srgb, var(--interactive-accent) 15%, transparent); }
+.llm-hub-scheduler-type.is-reminder { color: var(--text-normal); background: var(--background-primary-alt); }
+.llm-hub-scheduler-card-name { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.llm-hub-scheduler-card-name strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.llm-hub-scheduler-card-name > span { font-size: 11px; color: var(--text-muted); }
+.llm-hub-scheduler-state { color: var(--text-muted); background: var(--background-primary); font-size: 10px; border-radius: 8px; padding: 3px 7px; }
+.llm-hub-scheduler-state.is-on { color: var(--text-accent); background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)); }
+.llm-hub-scheduler-prompt {
+  color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 12px 0;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.llm-hub-scheduler-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 13px; font-size: 10px; color: var(--text-muted); margin: 2px 0 11px; }
+.llm-hub-scheduler-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.llm-hub-scheduler-status.is-success { color: var(--text-success); }
+.llm-hub-scheduler-status.is-failed { color: var(--text-error); }
+.llm-hub-scheduler-status.is-running { color: var(--text-accent); }
+.llm-hub-scheduler-card-actions { display: flex; align-items: center; gap: 5px; padding-top: 9px; border-top: 1px solid var(--background-modifier-border); }
+.llm-hub-scheduler-card-actions button {
+  background: transparent; border: 1px solid transparent; border-radius: 7px;
+  min-height: 27px; min-width: 27px; padding: 3px 6px; display: inline-flex;
+  align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted);
+}
+.llm-hub-scheduler-card-actions button:hover:not(:disabled) { color: var(--text-normal); background: var(--background-modifier-hover); }
+.llm-hub-scheduler-card-actions button:nth-last-child(2) { margin-left: auto; }
+.llm-hub-scheduler-run-error { color: var(--text-error); font-size: 11px; line-height: 1.4; margin-bottom: 9px; overflow-wrap: anywhere; }
+.llm-hub-scheduler-empty { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 12px; border: 1px dashed var(--background-modifier-border); border-radius: 14px; }
+.llm-hub-scheduler-empty svg { color: var(--text-accent); }
+.llm-hub-scheduler-empty strong { font-size: 13px; }
+.llm-hub-scheduler-empty p { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.llm-hub-scheduler-empty button { margin-top: 8px; font-size: 11px; }
+.llm-hub-scheduler-editor { border: 1px solid var(--interactive-accent); border-radius: 14px; background: var(--background-secondary); margin-top: 13px; padding: 14px; }
+.llm-hub-scheduler-section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 13px; }
+.llm-hub-scheduler-icon { background: transparent; border: 0; display: grid; place-items: center; padding: 4px; color: var(--text-muted); }
+.llm-hub-scheduler-choice { display: flex; gap: 5px; background: var(--background-primary); border-radius: 10px; padding: 4px; margin-bottom: 13px; }
+.llm-hub-scheduler-choice button { display: flex; flex: 1; gap: 6px; align-items: center; justify-content: center; background: none; font-size: 11px; color: var(--text-muted); border-radius: 7px; padding: 8px 4px; border: 0; }
+.llm-hub-scheduler-choice button.is-selected { background: var(--background-secondary); color: var(--text-normal); box-shadow: 0 1px 8px rgba(0,0,0,.09); }
+.llm-hub-scheduler-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; color: var(--text-muted); font-size: 11px; font-weight: 550; min-width: 0; }
+.llm-hub-scheduler-field input, .llm-hub-scheduler-field textarea, .llm-hub-scheduler-field select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; border-radius: 8px; color: var(--text-normal); background: var(--background-primary); font-size: 12px; }
+.llm-hub-scheduler-field textarea { resize: vertical; min-height: 86px; line-height: 1.5; }
+.llm-hub-scheduler-fields { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 8px; }
+.llm-hub-scheduler-hint { color: var(--text-muted); background: var(--background-primary); border-radius: 9px; display: flex; gap: 7px; align-items: flex-start; font-size: 10px; line-height: 1.45; padding: 9px; }
+.llm-hub-scheduler-hint svg { flex-shrink: 0; margin-top: 1px; }
+.llm-hub-scheduler-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.llm-hub-scheduler-actions button { font-size: 11px; display: inline-flex; align-items: center; gap: 6px; }
+.llm-hub-scheduler-error { color: var(--text-error); font-size: 11px; margin: 8px 0; }
+.llm-hub-scheduler-footer { display: flex; align-items: flex-start; gap: 7px; font-size: 10px; color: var(--text-faint); line-height: 1.5; margin: 16px 3px 0; }
+.llm-hub-scheduler-footer svg { flex-shrink: 0; margin-top: 1px; }
+@media (max-width: 390px) {
+  .llm-hub-tab { padding: 10px 6px; font-size: 11px; }
+  .llm-hub-scheduler { padding: 10px 9px 22px; }
+  .llm-hub-scheduler-hero { padding: 14px 12px; }
+  .llm-hub-scheduler-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* Scheduler autonomy controls */
+.llm-hub-scheduler-permissions {
+  margin: 3px 0 12px; padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-primary) 65%, var(--background-secondary));
+}
+.llm-hub-scheduler-permissions-title {
+  display: flex; align-items: center; gap: 7px; margin: 0 0 7px;
+  color: var(--text-normal); font-size: 12px; font-weight: 650;
+}
+.llm-hub-scheduler-permissions-title svg { color: var(--text-accent); }
+.llm-hub-scheduler-permission {
+  display: flex; align-items: center; gap: 12px;
+  justify-content: space-between; cursor: pointer;
+  padding: 9px 1px; margin: 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.llm-hub-scheduler-permission > div { min-width: 0; flex: 1; }
+.llm-hub-scheduler-permission strong {
+  display: flex; align-items: center; gap: 5px; color: var(--text-normal);
+  font-size: 11px; font-weight: 650; margin-bottom: 4px;
+}
+.llm-hub-scheduler-permission span {
+  display: block; font-size: 10px; color: var(--text-muted); line-height: 1.45;
+}
+.llm-hub-scheduler-permission input[role="switch"] {
+  flex: 0 0 auto; margin: 0 3px; cursor: pointer;
+}
+.llm-hub-scheduler-permissions-note {
+  color: var(--text-faint); font-size: 10px; line-height: 1.45;
+  margin-top: 5px;
+}

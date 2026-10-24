@@ -55,6 +55,7 @@ export interface ToolExecutorOptions {
   onRunSkillWorkflow?: SkillWorkflowExecutor;
   vaultToolAllowedFolders?: string[];
   pdfInputMode?: PdfInputMode;
+  onProposeSchedule?: (draft: Record<string, unknown>) => Promise<void>;
   skipMcpApproval?: boolean;
   vaultToolMode?: import("../types").VaultToolMode;
 }
@@ -93,6 +94,23 @@ export async function executeToolCall(
       return { success: false, result: `Vault tool is disabled in ${options.vaultToolMode} mode: ${toolCall.name}` };
     }
     switch (toolCall.name) {
+      case "propose_schedule": {
+        if (!options.onProposeSchedule) {
+          return { success: false, result: "The schedule editor is unavailable." };
+        }
+        const fields = ["title", "prompt", "kind", "repeat", "startsAtLocal"] as const;
+        if (fields.some(key => typeof args[key] !== "string" || !args[key].trim())) {
+          return { success: false, result: "A title, prompt, kind, recurrence and exact local start time are required." };
+        }
+        if (!["reminder", "prompt"].includes(args.kind as string)
+          || !["once", "daily", "weekly", "interval"].includes(args.repeat as string)
+          || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(args.startsAtLocal as string)) {
+          return { success: false, result: "Invalid schedule type or start time. Use YYYY-MM-DDTHH:mm in local time." };
+        }
+        await options.onProposeSchedule(args);
+        return { success: true, result: "Schedule proposal opened for user review. It is NOT scheduled until the user clicks Save schedule." };
+      }
+
       case "read_timeline": {
         const timelineName = sanitizeTimelineName((args.timelineName as string | undefined) || "Timeline");
         assertVaultToolPathAllowed(`Dashboards/Timeline/${timelineName}`, allowedFolders);
