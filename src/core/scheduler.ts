@@ -158,6 +158,9 @@ export class ScheduledTaskManager {
     const task = this.list().find(item => item.id === id);
     if (!task) throw new Error("Task not found.");
     if (this.inProgress.has(id)) throw new Error("Cannot pause a running task.");
+    if (!task.enabled && task.repeat === "once" && task.nextRunAt === null) {
+      throw new Error("This one-time schedule has finished. Edit its first-run time to schedule it again.");
+    }
     task.enabled = !task.enabled;
     if (task.enabled && (task.nextRunAt == null || task.repeat !== "once" && task.nextRunAt < Date.now())) {
       task.nextRunAt = task.startsAt > Date.now() ? task.startsAt : nextOccurrence(task, Date.now());
