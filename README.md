@@ -417,7 +417,9 @@ Choose Gemini Helper when you want cutting-edge cloud models. Choose Local LLM H
 The **Schedule** tab in Mabel's chat sidebar manages scheduled local actions. Open it with the tab or with Obsidian's **Open schedules** command. Choose a one-time, daily, weekly or interval cadence (15 minutes minimum), and create either:
 
 - **Reminder:** Shows an Obsidian notice at the due time and archives the reminder in the vault.
-- **AI prompt:** Runs the configured local chat model without tools and archives its text response. No shell, MCP, workflow or vault-edit permission is implied by a scheduled prompt.
+- **AI prompt:** Runs the configured local chat model and archives its response. It is text-only unless you explicitly enable the scheduled task's autonomy switches.
+
+**Per-task autonomy switches:** **Allow unattended tools** grants Mabel the vault tools (including create/edit/rename/delete, scoped to your configured allowed folders) without per-action confirmation. A second **Allow connected MCP tools** switch separately enables the currently configured and enabled MCP integrations, including potentially command-capable tools, without prompting on each call. Both default off; the second requires the first. Revoking them prevents future executions. Run notes record the tool names, targets, success/failure, and the resulting response. Scheduled jobs cannot create other schedules. Tool rounds and calls are bounded. Existing scheduled tasks remain text-only until you opt in.
 
 You can pause/resume, edit, delete, run immediately, and open the most recent run note. Results are saved under `<workspace>/scheduler/runs/<task-id>/`. Mabel can also *propose* a schedule from chat using `propose_schedule`, which pre-populates the Schedule editor. **The schedule is not created until you explicitly click Save.**
 
