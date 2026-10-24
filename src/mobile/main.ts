@@ -259,7 +259,7 @@ class MobileSettingsTab extends PluginSettingTab {
         .setValue(this.plugin.settings.writeMode)
         .onChange(async value => { this.plugin.settings.writeMode = value as "readOnly" | "ask"; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow vault tools")
-      .setDesc("Note reading and searching when enabled in chat. In Ask mode, writes still require individual approval.")
+      .setDesc("Note reading and searching when enabled in chat. Writing still requires individual approval.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.allowVaultTools)
         .onChange(async value => { this.plugin.settings.allowVaultTools = value; await this.plugin.saveSettings(); }));
     new Setting(root).setName("Allow web search")
