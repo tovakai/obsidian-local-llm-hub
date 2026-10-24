@@ -353,7 +353,7 @@ export class LocalLlmHubPlugin extends Plugin {
 
     this.addCommand({
       id: "open-schedules",
-      name: "Open Mabel schedules",
+      name: "Open schedules",
       callback: () => { void this.activateChatView("schedule"); },
     });
 
