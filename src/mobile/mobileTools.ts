@@ -7,7 +7,7 @@ export interface ToolDefinition {
 }
 const param = (description: string) => ({ type: "string", description });
 const accessibleNotes = (app: App) => app.vault.getMarkdownFiles().filter(file =>
-  !file.path.startsWith(".obsidian/") && !file.path.startsWith("LocalLlmHub/"));
+  !file.path.startsWith(app.vault.configDir + "/") && !file.path.startsWith("LocalLlmHub/"));
 
 export function mobileToolDefinitions(vault: boolean, web: boolean): ToolDefinition[] {
   const defs: ToolDefinition[] = [];

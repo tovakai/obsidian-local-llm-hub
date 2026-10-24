@@ -171,7 +171,7 @@ class MobileSettingsTab extends PluginSettingTab {
       }).catch(error => { new Notice(String(error)); }).finally(() => { avatarPicker.value = ""; });
     });
     new Setting(root).setName("Assistant profile picture")
-      .setDesc("Upload a picture to show beside Mabel's messages.")
+      .setDesc("Upload a picture to show beside assistant messages.")
       .addButton(btn => btn.setButtonText("Choose image").onClick(() => avatarPicker.click()))
       .addButton(btn => btn.setButtonText("Clear image").onClick(() => {
         void (async () => {
