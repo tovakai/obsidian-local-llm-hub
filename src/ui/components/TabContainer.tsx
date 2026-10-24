@@ -5,8 +5,10 @@ import Chat, { type ChatRef } from "./Chat";
 import SearchPanel from "./SearchPanel";
 import { WorkflowPanel } from "./workflow/WorkflowPanel";
 import { t } from "src/i18n";
+import { CalendarClock } from "lucide-react";
+import SchedulePanel from "./SchedulePanel";
 
-export type TabType = "chat" | "search" | "workflow";
+export type TabType = "chat" | "search" | "workflow" | "schedule";
 
 export interface TabContainerRef {
   setActiveTab: (tab: TabType) => void;
@@ -53,6 +55,11 @@ const TabContainer = forwardRef<TabContainerRef, TabContainerProps>(
           >
             {t("tab.workflowSkill")}
           </button>
+          <button
+            className={"llm-hub-tab " + (activeTab === "schedule" ? "active" : "")}
+            onClick={() => setActiveTab("schedule")}
+            title="Mabel schedules"
+          ><CalendarClock size={14} /> Schedule</button>
         </div>
         <div className="llm-hub-tab-content">
           <div className={`llm-hub-tab-panel ${activeTab === "chat" ? "is-active" : ""}`}>
@@ -63,6 +70,9 @@ const TabContainer = forwardRef<TabContainerRef, TabContainerProps>(
           </div>
           <div className={`llm-hub-tab-panel ${activeTab === "workflow" ? "is-active" : ""}`}>
             <WorkflowPanel app={plugin.app} />
+          </div>
+          <div className={"llm-hub-tab-panel " + (activeTab === "schedule" ? "is-active" : "")}>
+            <SchedulePanel plugin={plugin} />
           </div>
         </div>
       </div>
