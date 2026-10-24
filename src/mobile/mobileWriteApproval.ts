@@ -32,7 +32,7 @@ class NoteApprovalModal extends Modal {
   }
 
   onClose(): void {
-    if (!this.decided) this.finish(false);
+    if (!this.decided) { this.decided = true; this.resolveDecision?.(false); }
     this.contentEl.empty();
   }
 

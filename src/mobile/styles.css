@@ -25,3 +25,5 @@
 .mabel-mobile-prompt { width:100%; min-height:140px; }
 .mabel-mobile-avatar-preview { display:flex; align-items:center; min-height:56px; margin:8px 0; }
 .mabel-mobile-avatar-preview img { width:54px; height:54px; border-radius:50%; object-fit:cover; }
+
+.mabel-mobile-edit-preview { max-height:26vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--background-secondary); padding:10px; border:1px solid var(--background-modifier-border); border-radius:6px; font-size:.82rem; }
