@@ -464,3 +464,14 @@ Run reports live in Mabel/Memory/Sleep/Reports. Timestamped original-file backup
 - Referencing a source conversation is not a guarantee the AI interpreted its content correctly; review the reports.
 - No MCP, shell, or arbitrary file edit access is granted to sleep, even if those are enabled for ordinary scheduled agent jobs.
 - Obsidian must be open, and the selected local chat model available, to run automatic sleep.
+
+
+### Mabel Activity view
+
+Open the Schedule tab, then select **Activity**, or use the Obsidian command **Open Mabel activity**.
+
+The live, searchable activity feed groups events by run. It includes scheduled reminder / AI / sleep starts, completions and failures, the tool names and vault paths accessed by scheduled AI prompts, and individual memory review, backup, update and report events. The same timeline includes manual /sleep and /sleep apply runs.
+
+Select a run to expand its execution timeline, and open the original run note or sleep report for full details. Filter the feed to memory work, tools, or errors. The most recent 600 metadata events survive Obsidian restarts in the plugin's local settings data. This is **not** an audit of every ordinary chat response or every Obsidian filesystem operation, and activity before installation cannot be retroactively recovered.
+
+For privacy, this feed intentionally stores metadata (event names, times, file targets and short status messages), not raw model prompts, shell commands or tool argument bodies. Detailed run reports remain in their original vault locations. 
