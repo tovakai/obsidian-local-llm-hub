@@ -424,3 +424,43 @@ The **Schedule** tab in Mabel's chat sidebar manages scheduled local actions. Op
 You can pause/resume, edit, delete, run immediately, and open the most recent run note. Results are saved under `<workspace>/scheduler/runs/<task-id>/`. Mabel can also *propose* a schedule from chat using `propose_schedule`, which pre-populates the Schedule editor. **The schedule is not created until you explicitly click Save.**
 
 **Runtime limitation:** The scheduler runs while Obsidian desktop is active. On reopening, overdue one-time jobs and one occurrence of each overdue recurring job will run, but missed recurring ticks are not replayed. This is not yet a headless OS scheduler and may not be suitable for urgent notifications. Scheduling has no dependence on a secondary machine, but the configured local LLM must be reachable when an AI job fires.
+
+
+## Mabel memory sleep (fork feature)
+
+Inspired by Mandalivia's "Your Obsidian Vault Is Already an Agent Memory System" article:
+https://www.mandalivia.com/obsidian/your-obsidian-vault-is-already-an-agent-memory-system/
+
+Unlike the original interactive-only routine, Mabel can run this on a schedule.
+
+### Quick start
+
+1. Open Mabel > Schedule > New /sleep routine (or choose Sleep while creating a schedule).
+2. Choose the first run and repeat cadence. Nightly is a good starting point.
+3. The per-task **Automatically apply CTX updates** switch is OFF by default. OFF saves proposals in a report without applying them; ON auto-applies changes to the five CTX files and saves backups.
+4. Save the task; use Run to test it immediately.
+
+Alternatively, type **/sleep** in chat for a preview, or **/sleep apply** for an explicitly authorized immediate update.
+
+### Files
+
+The five compact context files are created inside Mabel/Memory/Context:
+
+- CTX-aboutme.md — people, values and enduring patterns
+- CTX-now.md — current phase of life
+- CTX-Work.md — professional context
+- CTX-project-index.md — current and paused projects
+- CTX-systems.md — hardware and tooling
+
+The model sees their orientation menu and can use the existing user-context tool to read them. Previously curated User.md, Preferences.md and Projects.md are reference-only and never overwritten by sleep.
+
+Each run selects up to twelve recently modified conversations from Mabel's saved workspace chats and extracts **only user-authored messages**, excluding AI and tool output. The model compares these to the existing context, asks about uncertainties, and proposes source-linked updates. CTX updates are limited to 48 lines / 8,000 characters per file.
+
+Run reports live in Mabel/Memory/Sleep/Reports. Timestamped original-file backups live in Mabel/Memory/Sleep/Backups.
+
+### Constraints
+
+- Only Mabel's saved chats are ingested in this first implementation, not ChatGPT, browser history or the whole vault.
+- Referencing a source conversation is not a guarantee the AI interpreted its content correctly; review the reports.
+- No MCP, shell, or arbitrary file edit access is granted to sleep, even if those are enabled for ordinary scheduled agent jobs.
+- Obsidian must be open, and the selected local chat model available, to run automatic sleep.
