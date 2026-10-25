@@ -215,7 +215,9 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
     ...(chats.length ? chats.map(f => "- " + f.path) : ["None"]), "",
   ].join("\n");
   await app.vault.create(reportPath, report);
-  plugin.settings.lastSleepAt = Date.now();
-  await plugin.saveSettings();
+  if (autoApply) {
+    plugin.settings.lastSleepAt = Date.now();
+    await plugin.saveSettings();
+  }
   return { reportPath, summary: plan.summary, updated, staged, chatCount: snippets.length };
 }
