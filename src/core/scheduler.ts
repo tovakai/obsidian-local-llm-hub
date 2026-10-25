@@ -249,14 +249,16 @@ export class ScheduledTaskManager {
     return path;
   }
 
-  private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[]): Promise<string> {
+  private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[], runId: string): Promise<string> {
     if (task.kind === "sleep") {
-      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true, task.prompt);
+      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true, task.prompt,
+        (kind, title, path, detail) => this.plugin.activityLog.record({ runId, taskId: task.id, source: "sleep", kind, title, path, detail }));
       return [result.summary || "Memory review complete.",
         "Updated: " + result.updated.length + " | Staged: " + result.staged.length,
         "Conversations: " + result.chatCount, "Report: " + result.reportPath].join("\n\n");
     }
-    return runScheduledAgent(task, this.plugin, signal, audit);
+    return runScheduledAgent(task, this.plugin, signal, audit,
+      (kind, title, path) => this.plugin.activityLog.record({ runId, taskId: task.id, source: "scheduler", kind, title, path }));
   }
 
   private async execute(task: ScheduledTask, manual: boolean): Promise<void> {
@@ -265,7 +267,10 @@ export class ScheduledTaskManager {
     const controller = new AbortController();
     this.controllers.set(task.id, controller);
     const at = Date.now();
+    const runId = randomUUID();
     const audit: ScheduledToolAudit[] = [];
+    this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+      kind: "run-start", title: task.title, detail: manual ? "Started manually" : "Started on schedule" });
     task.lastRunAt = at;
     task.lastStatus = "running";
     task.lastError = undefined;
@@ -278,10 +283,13 @@ export class ScheduledTaskManager {
       // Reserve the occurrence before invoking the model. This avoids
       // repeated execution if a scheduler tick arrives during a long run.
       await this.persist();
-      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal, audit);
+      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal, audit, runId);
       if (this.closed) return;
       task.lastResultPath = await this.logRun(task, at, output, audit);
       task.lastStatus = "success";
+      this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+        kind: "run-complete", title: task.title, detail: task.kind === "reminder" ? "Reminder delivered" : "Finished successfully",
+        path: task.lastResultPath });
       new Notice(task.kind === "reminder"
         ? "Mabel reminder: " + task.title + "\n" + task.prompt.slice(0, 160)
         : "Mabel finished: " + task.title, 9000);
@@ -294,6 +302,8 @@ export class ScheduledTaskManager {
       } catch (loggingError) {
         console.error("[Mabel scheduler] Failed to save execution log:", loggingError);
       }
+      this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+        kind: "run-error", title: task.title, detail: task.lastError?.slice(0, 250), path: task.lastResultPath });
       new Notice("Mabel schedule failed: " + task.title, 7500);
     } finally {
       this.inProgress.delete(task.id);
