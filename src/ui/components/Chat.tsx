@@ -726,7 +726,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   // Send message
   const sendMessage = useCallback(async (content: string, attachments?: Attachment[], skillPath?: string) => {
     userInteractedRef.current = true;
-    const sleepCommand = content.trim().match(/^\\/sleep(?:\\s+(apply))?$/i);
+    const sleepCommand = content.trim().match(/^[/]sleep(?:\s+(apply))?$/i);
     if (sleepCommand) {
       const autoApply = Boolean(sleepCommand[1]);
       const runId = generateChatId();
