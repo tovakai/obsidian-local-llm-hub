@@ -11,7 +11,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { TFile, Notice } from "obsidian";
-import { Plus, History, Trash2 } from "lucide-react";
+import { Plus, History, Trash2, X } from "lucide-react";
 import type { LocalLlmHubPlugin } from "src/plugin";
 import {
   type Message,
@@ -129,6 +129,19 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   } = useChatHistories(chatStorageHost);
   const [showHistory, setShowHistory] = useState(false);
   const [isSidebarWide, setIsSidebarWide] = useState(false);
+
+  // A history drawer should always have an independent way to close, even
+  // when the main chat header is clipped by a narrow sidebar/theme.
+  useEffect(() => {
+    if (!showHistory) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if ((event.target as HTMLElement | null)?.closest?.(".modal")) return;
+      setShowHistory(false);
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [showHistory]);
 
   const [selectedModelTier, setSelectedModelTier] = useState<ModelTier>(() => validModelTier(plugin.settings.selectedModelTier));
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(() =>
@@ -1244,15 +1257,26 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
           </HeaderButton>
         </ChatHeader>
 
-      {/* History panel */}
-      {showHistory && <HistoryList classPrefix="llm-hub"
-        entries={chatHistories.map(history => ({ ...history, dateLabel: formatHistoryDate(history.updatedAt) }))}
-        currentId={currentChatId} emptyLabel={t("chat.noChats")} deleteLabel={t("chat.deleteChat")}
-        onSelect={history => { void loadChat(history); }}
-        onDelete={(history) => { void deleteChat(history); }}
-        panel deleteIcon={<Trash2 size={12} />}
-
-      />}
+      {/* History drawer with its own visible close affordance. */}
+      {showHistory && (
+        <section className="llm-hub-history-drawer" aria-label="Chat history">
+          <div className="llm-hub-history-drawer-heading">
+            <span><History size={14} /> Chat history</span>
+            <button type="button" className="llm-hub-history-close"
+              aria-label="Close chat history" title="Close chat history"
+              onClick={() => setShowHistory(false)}>
+              <X size={14} /> Close
+            </button>
+          </div>
+          <HistoryList classPrefix="llm-hub"
+            entries={chatHistories.map(history => ({ ...history, dateLabel: formatHistoryDate(history.updatedAt) }))}
+            currentId={currentChatId} emptyLabel={t("chat.noChats")} deleteLabel={t("chat.deleteChat")}
+            onSelect={history => { void loadChat(history); }}
+            onDelete={(history) => { void deleteChat(history); }}
+            panel deleteIcon={<Trash2 size={12} />}
+          />
+        </section>
+      )}
 
       {/* Messages */}
       <MessageList
