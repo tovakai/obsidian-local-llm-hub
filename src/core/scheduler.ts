@@ -2,8 +2,9 @@ import { Notice } from "obsidian";
 import { randomUUID } from "node:crypto";
 import type { LocalLlmHubPlugin } from "../plugin";
 import { runScheduledAgent, type ScheduledToolAudit } from "./scheduledAgent";
+import { runSleep } from "./sleep";
 
-export type ScheduleKind = "reminder" | "prompt";
+export type ScheduleKind = "reminder" | "prompt" | "sleep";
 export type ScheduleRepeat = "once" | "daily" | "weekly" | "interval";
 export type ScheduleStatus = "running" | "success" | "failed";
 
@@ -19,6 +20,8 @@ export interface ScheduledTask {
   allowTools?: boolean;
   /** Separately allow connected MCP tools (which may execute commands). Defaults to false. */
   allowMcpTools?: boolean;
+  /** Memory sleep may update only the five CTX context files. */
+  autoApplySleep?: boolean;
   /** Original local-wall-clock anchor, stored as a Unix millisecond timestamp. */
   startsAt: number;
   nextRunAt: number | null;
@@ -30,7 +33,7 @@ export interface ScheduledTask {
   lastError?: string;
 }
 
-export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt" | "allowTools" | "allowMcpTools">;
+export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt" | "allowTools" | "allowMcpTools" | "autoApplySleep">;
 
 /**
  * Find the next occurrence strictly AFTER the supplied instant.
@@ -67,7 +70,7 @@ export function validateTask(draft: TaskDraft): TaskDraft {
   const prompt = draft.prompt.trim();
   if (!title || title.length > 120) throw new Error("Give the task a title (up to 120 characters).");
   if (!prompt || prompt.length > 15_000) throw new Error("Enter a prompt or reminder (up to 15,000 characters).");
-  if (draft.kind !== "reminder" && draft.kind !== "prompt") throw new Error("Invalid task type.");
+  if (draft.kind !== "reminder" && draft.kind !== "prompt" && draft.kind !== "sleep") throw new Error("Invalid task type.");
   if (!["once", "daily", "weekly", "interval"].includes(draft.repeat)) throw new Error("Invalid repeat setting.");
   if (!Number.isFinite(draft.startsAt)) throw new Error("Choose a valid date and time.");
   if (draft.repeat === "interval" && (!Number.isInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 10_080)) {
@@ -76,6 +79,7 @@ export function validateTask(draft: TaskDraft): TaskDraft {
   return { ...draft, title, prompt, intervalMinutes: draft.repeat === "interval" ? draft.intervalMinutes : 60,
     allowTools: draft.kind === "prompt" && draft.allowTools === true,
     allowMcpTools: draft.kind === "prompt" && draft.allowTools === true && draft.allowMcpTools === true,
+    autoApplySleep: draft.kind === "sleep" && draft.autoApplySleep === true,
   };
 }
 
@@ -246,6 +250,12 @@ export class ScheduledTaskManager {
   }
 
   private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[]): Promise<string> {
+    if (task.kind === "sleep") {
+      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true);
+      return [result.summary || "Memory review complete.",
+        "Updated: " + result.updated.length + " | Staged: " + result.staged.length,
+        "Conversations: " + result.chatCount, "Report: " + result.reportPath].join("\n\n");
+    }
     return runScheduledAgent(task, this.plugin, signal, audit);
   }
 
