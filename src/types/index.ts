@@ -227,6 +227,8 @@ export interface LocalLlmHubSettings {
   enabledWorkflowEventTriggers: WorkflowEventTrigger[];
   /** Locally scheduled reminders and tool-free model prompts. */
   scheduledTasks: ScheduledTask[];
+  /** Last successfully completed auto-applied memory sleep checkpoint. */
+  lastSleepAt?: number;
   /** Vault-relative folder used for plugin-generated data. */
   workspaceFolder: string;
   /** Vault-relative folder containing user-installed skills. */
