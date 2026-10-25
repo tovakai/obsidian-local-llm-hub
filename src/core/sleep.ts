@@ -214,7 +214,7 @@ export async function runSleep(
     "Keep established facts unless the user clearly corrected them. Ask questions for uncertainty rather than guessing.",
     "Do not silently reinterpret sensitive personal, medical, emotional, or relationship information.",
     "Only change files that genuinely need it. Preserve existing facts, headings and wikilinks.",
-    "Return ONLY JSON with shape: {\"updates\":[{\"file\":\"CTX-now.md\",\"content\":\"FULL updated markdown\",\"sources\":[\"CHAT-01\"],\"reason\":\"...\"}],\"questions\":[\"...\"],\"summary\":\"...\"}.",
+    "Return ONLY JSON with shape: {\"updates\":[{\"file\":\"CTX-now.md\",\"content\":\"FULL revised Markdown\",\"sources\":[\"CHAT-01\"],\"reason\":\"Why the change is needed\",\"evidence\":[{\"line\":\"- Newly confirmed fact\",\"source\":\"CHAT-01\",\"quote\":\"Exact words from the user, at least 12 characters\"}]}],\"questions\":[],\"summary\":\"Summary\"}",
     "Use ONLY the five known CTX filenames, and source IDs from the supplied USER messages.",
     "For EVERY added or changed factual bullet, supply evidence[] with its EXACT bullet line, source ID and a verbatim quote copied from that user's message.",
     "Quotes must come from NEW USER MESSAGE SOURCES, not the existing CTX notes or OTHER CURATED MEMORY.",
@@ -243,6 +243,9 @@ export async function runSleep(
   const proposedPlan = { ...plan, updates: proposals };
   const evidenceReview = evaluateSleepEvidence(proposedPlan, originals, sourceTexts);
   const applyApproved = autoApply && evidenceReview.safe;
+  const reviewNotice = autoApply && !applyApproved && evidenceReview.issues.length
+    ? "Auto-apply blocked; proposals saved for review (" + evidenceReview.issues.length + " provenance issues). "
+    : "";
   await ensureFolder(app, SLEEP_ROOT + "/Reports");
   const stamp = fileStamp();
   const backupDir = SLEEP_ROOT + "/Backups/" + stamp;
@@ -306,5 +309,5 @@ export async function runSleep(
     plugin.settings.lastSleepAt = Date.now();
     await plugin.saveSettings();
   }
-  return { reportPath, summary: plan.summary, updated, staged, chatCount: snippets.length };
+  return { reportPath, summary: reviewNotice + plan.summary, updated, staged, chatCount: snippets.length };
 }
