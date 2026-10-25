@@ -6,6 +6,7 @@
  */
 import type { LocalLlmHubPlugin } from "../plugin";
 import type { ScheduledTask } from "./scheduler";
+import type { ActivityKind } from "./activityLog";
 import type { Message, ToolDefinition } from "../types";
 import { accumulateStreamChunk, createStreamAccumulation } from "obsidian-llm-hub-common/chat";
 import { localLlmChatStream } from "./localLlmProvider";
@@ -66,6 +67,7 @@ export async function runScheduledAgent(
   plugin: LocalLlmHubPlugin,
   signal: AbortSignal,
   audit: ScheduledToolAudit[],
+  onActivity?: (kind: ActivityKind, title: string, path?: string) => void,
 ): Promise<string> {
   const config = { ...plugin.settings.llmConfig };
   if (!config.model) throw new Error("Configure Mabel's local model before running AI tasks.");
@@ -140,6 +142,7 @@ export async function runScheduledAgent(
         throw new Error("Scheduled agent exceeded 24 tool calls; execution stopped.");
       }
 
+      onActivity?.("tool-start", call.name, targetOf(call.args));
       let success = false;
       let resultText: string;
       let attachments: Message["attachments"];
@@ -168,6 +171,7 @@ export async function runScheduledAgent(
         }
       }
 
+      onActivity?.(success ? "tool-success" : "tool-error", call.name, targetOf(call.args));
       audit.push({
         name: call.name,
         success,
