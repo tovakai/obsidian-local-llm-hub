@@ -20,6 +20,7 @@ function newDraft(): TaskDraft {
     intervalMinutes: 60,
     allowTools: false,
     allowMcpTools: false,
+    autoApplySleep: false,
     startsAt: Math.ceil((Date.now() + 60 * 60_000) / (5 * 60_000)) * (5 * 60_000),
   };
 }
@@ -81,6 +82,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
         // Models may propose timing and instructions, but cannot grant their own permissions.
         allowTools: false,
         allowMcpTools: false,
+        autoApplySleep: false,
         startsAt: parsed,
       };
       setDraft(next);
@@ -101,7 +103,10 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
   const nextTask = sorted.find(t => t.enabled && t.nextRunAt !== null);
 
   function startCreate(kind: ScheduleKind = "reminder"): void {
-    const initial = { ...newDraft(), kind };
+    const initial = { ...newDraft(), kind,
+      title: kind === "sleep" ? "Mabel /sleep" : "",
+      prompt: kind === "sleep" ? "Consolidate recent user conversations into five concise CTX memory files, checking for stale facts, duplicates and missing information." : "",
+    };
     setDraft(initial);
     setDateInput(localInput(initial.startsAt));
     setEditing(null);
@@ -118,6 +123,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
       intervalMinutes: task.intervalMinutes,
       allowTools: task.allowTools === true,
       allowMcpTools: task.allowMcpTools === true,
+      autoApplySleep: task.autoApplySleep === true,
       startsAt: task.startsAt,
     });
     setDateInput(localInput(task.startsAt));
@@ -184,6 +190,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           <div className="llm-hub-scheduler-choice" role="group" aria-label="Task kind">
             <button type="button" className={draft.kind === "reminder" ? "is-selected" : ""} onClick={() => setDraft(v => ({ ...v, kind: "reminder" }))}><Bell size={15} /> Reminder</button>
             <button type="button" className={draft.kind === "prompt" ? "is-selected" : ""} onClick={() => setDraft(v => ({ ...v, kind: "prompt" }))}><BrainCircuit size={15} /> AI prompt</button>
+            <button type="button" className={draft.kind === "sleep" ? "is-selected" : ""} onClick={() => setDraft(v => ({ ...v, kind: "sleep", title: v.title || "Mabel /sleep", prompt: v.prompt || "Review and consolidate recent conversations into CTX context files." }))}><Sparkles size={15} /> Sleep</button>
           </div>
           <label className="llm-hub-scheduler-field">Name
             <input type="text" value={draft.title} maxLength={120} placeholder="e.g. Review today's projects"
@@ -216,6 +223,22 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
               <input type="number" min={15} max={10080} step={5} value={draft.intervalMinutes}
                 onChange={event => setDraft(v => ({ ...v, intervalMinutes: Number(event.target.value) }))} />
             </label>
+          )}
+          {draft.kind === "sleep" && (
+            <div className="llm-hub-scheduler-permissions">
+              <div className="llm-hub-scheduler-permissions-title"><ShieldCheck size={15} /> Memory permissions</div>
+              <label className="llm-hub-scheduler-permission">
+                <div>
+                  <strong>Automatically apply CTX updates</strong>
+                  <span>Read recent user chat messages and edit only Mabel/Memory/Context/CTX-* files. Backups and a source-linked report are saved for each run.</span>
+                </div>
+                <input type="checkbox" role="switch" checked={draft.autoApplySleep === true}
+                  onChange={event => setDraft(v => ({ ...v, autoApplySleep: event.target.checked }))}/>
+              </label>
+              <div className="llm-hub-scheduler-permissions-note">
+                {draft.autoApplySleep ? "Auto-apply is ON: the five CTX files may be revised without prompts. Other notes and chats are never modified." : "Preview mode: proposed updates go into a report without modifying existing CTX notes."}
+              </div>
+            </div>
           )}
           {draft.kind === "prompt" && (
             <div className="llm-hub-scheduler-permissions">
@@ -250,8 +273,8 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           )}
           <div className="llm-hub-scheduler-hint">
             <AlertCircle size={14} />
-            <span>{draft.kind === "prompt"
-              ? draft.allowTools ? "Runs Mabel with the enabled tool permissions and stores an execution log in the vault." : "Runs Mabel without tools and saves the text response to the vault."
+            <span>{draft.kind === "sleep" ? "Checks user-authored chat history, keeps five context files compact, and writes a source-linked sleep report." : draft.kind === "prompt"
+              ? draft.allowTools ? "Runs Mabel with enabled tools and stores the audit log." : "Runs Mabel without tools and saves the response."
               : "Shows an Obsidian notification and saves a reminder record in the vault."}</span>
           </div>
           {error && <p className="llm-hub-scheduler-error" role="alert">{error}</p>}
@@ -261,6 +284,8 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           </div>
         </section>
       )}
+
+      <div className="llm-hub-scheduler-sleep-shortcut"><button type="button" onClick={() => startCreate("sleep")}><Sparkles size={14} /> New /sleep routine</button></div>
 
       <div className="llm-hub-scheduler-list-heading">
         <span><CalendarClock size={17} /> Your schedules</span>
@@ -273,12 +298,13 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           <strong>No schedules yet</strong>
           <p>Make something happen later. Mabel will take it from there.</p>
           <button type="button" onClick={() => startCreate("prompt")}>Schedule an AI prompt</button>
+          <button type="button" onClick={() => startCreate("sleep")}>Schedule /sleep</button>
         </div>
       ) : sorted.map(task => (
         <article key={task.id} className={"llm-hub-scheduler-card" + (task.enabled ? "" : " is-paused")}>
           <div className="llm-hub-scheduler-card-top">
             <div className={"llm-hub-scheduler-type " + (task.kind === "prompt" ? "is-ai" : "is-reminder")}>
-              {task.kind === "prompt" ? <BrainCircuit size={15} /> : <Bell size={15} />}
+              {task.kind === "prompt" ? <BrainCircuit size={15} /> : task.kind === "sleep" ? <Sparkles size={15} /> : <Bell size={15} />}
             </div>
             <div className="llm-hub-scheduler-card-name"><strong>{task.title}</strong>
               <span>{cadence(task)}</span>
@@ -289,6 +315,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
           <div className="llm-hub-scheduler-meta">
             <span><Clock3 size={13} /> {task.enabled ? when(task.nextRunAt) : "Not running"}</span>
             {task.kind === "prompt" && task.allowTools === true && <span><ShieldCheck size={13} /> Vault tools{task.allowMcpTools === true ? " + MCP" : ""}</span>}
+            {task.kind === "sleep" && <span><ShieldCheck size={13} /> {task.autoApplySleep ? "Auto memory" : "Preview only"}</span>}
             {task.lastStatus && <span className={"llm-hub-scheduler-status is-" + task.lastStatus}>{task.lastStatus === "running" ? "Running..." : task.lastStatus === "success" ? "Last run succeeded" : "Last run failed"}</span>}
           </div>
           {task.lastStatus === "failed" && task.lastError && <div className="llm-hub-scheduler-run-error">{task.lastError}</div>}
