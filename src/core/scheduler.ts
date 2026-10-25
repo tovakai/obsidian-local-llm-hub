@@ -251,7 +251,7 @@ export class ScheduledTaskManager {
 
   private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[]): Promise<string> {
     if (task.kind === "sleep") {
-      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true);
+      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true, task.prompt);
       return [result.summary || "Memory review complete.",
         "Updated: " + result.updated.length + " | Staged: " + result.staged.length,
         "Conversations: " + result.chatCount, "Report: " + result.reportPath].join("\n\n");
