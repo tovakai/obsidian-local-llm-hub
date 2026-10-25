@@ -11,7 +11,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { TFile, Notice } from "obsidian";
-import { Plus, History, Trash2 } from "lucide-react";
+import { Plus, History, Trash2, X } from "lucide-react";
 import type { LocalLlmHubPlugin } from "src/plugin";
 import {
   type Message,
@@ -24,6 +24,7 @@ import {
   WORKSPACE_FOLDER,
 } from "src/types";
 import { localLlmChatStream } from "src/core/localLlmProvider";
+import { runSleep } from "src/core/sleep";
 import {
   accumulateStreamChunk,
   createStreamAccumulation,
@@ -128,6 +129,19 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   } = useChatHistories(chatStorageHost);
   const [showHistory, setShowHistory] = useState(false);
   const [isSidebarWide, setIsSidebarWide] = useState(false);
+
+  // A history drawer should always have an independent way to close, even
+  // when the main chat header is clipped by a narrow sidebar/theme.
+  useEffect(() => {
+    if (!showHistory) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if ((event.target as HTMLElement | null)?.closest?.(".modal")) return;
+      setShowHistory(false);
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [showHistory]);
 
   const [selectedModelTier, setSelectedModelTier] = useState<ModelTier>(() => validModelTier(plugin.settings.selectedModelTier));
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(() =>
@@ -725,6 +739,27 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   // Send message
   const sendMessage = useCallback(async (content: string, attachments?: Attachment[], skillPath?: string) => {
     userInteractedRef.current = true;
+    const sleepCommand = content.trim().match(/^[/]sleep(?:\s+(apply))?$/i);
+    if (sleepCommand) {
+      const autoApply = Boolean(sleepCommand[1]);
+      const runId = generateChatId();
+      plugin.activityLog.record({ runId, source: "sleep", kind: "run-start",
+        title: "/sleep", detail: autoApply ? "Manual memory review (auto-apply)" : "Manual memory review (preview)" });
+      new Notice("Mabel is reviewing her memories" + (autoApply ? " (auto-apply)" : " (preview)") + "...");
+      try {
+        const result = await runSleep(plugin, new AbortController().signal, autoApply, "",
+          (kind, title, path, detail) => plugin.activityLog.record({ runId, source: "sleep", kind, title, path, detail }));
+        plugin.activityLog.record({ runId, source: "sleep", kind: "run-complete",
+          title: "/sleep", detail: result.updated.length + " applied, " + result.staged.length + " staged", path: result.reportPath });
+        new Notice("Sleep complete: " + result.updated.length + " applied, " + result.staged.length + " staged.");
+        await plugin.app.workspace.openLinkText(result.reportPath, "", false);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        plugin.activityLog.record({ runId, source: "sleep", kind: "run-error", title: "/sleep", detail: message.slice(0, 200) });
+        new Notice("Sleep failed: " + message, 10000);
+      }
+      return;
+    }
     if (!plugin.settings.llmVerified) {
       new Notice(t("chat.llmNotVerified"));
       return;
@@ -1222,15 +1257,26 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
           </HeaderButton>
         </ChatHeader>
 
-      {/* History panel */}
-      {showHistory && <HistoryList classPrefix="llm-hub"
-        entries={chatHistories.map(history => ({ ...history, dateLabel: formatHistoryDate(history.updatedAt) }))}
-        currentId={currentChatId} emptyLabel={t("chat.noChats")} deleteLabel={t("chat.deleteChat")}
-        onSelect={history => { void loadChat(history); }}
-        onDelete={(history) => { void deleteChat(history); }}
-        panel deleteIcon={<Trash2 size={12} />}
-
-      />}
+      {/* History drawer with its own visible close affordance. */}
+      {showHistory && (
+        <section className="llm-hub-history-drawer" aria-label="Chat history">
+          <div className="llm-hub-history-drawer-heading">
+            <span><History size={14} /> Chat history</span>
+            <button type="button" className="llm-hub-history-close"
+              aria-label="Close chat history" title="Close chat history"
+              onClick={() => setShowHistory(false)}>
+              <X size={14} /> Close
+            </button>
+          </div>
+          <HistoryList classPrefix="llm-hub"
+            entries={chatHistories.map(history => ({ ...history, dateLabel: formatHistoryDate(history.updatedAt) }))}
+            currentId={currentChatId} emptyLabel={t("chat.noChats")} deleteLabel={t("chat.deleteChat")}
+            onSelect={history => { void loadChat(history); }}
+            onDelete={(history) => { void deleteChat(history); }}
+            panel deleteIcon={<Trash2 size={12} />}
+          />
+        </section>
+      )}
 
       {/* Messages */}
       <MessageList
@@ -1287,6 +1333,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
         activeOkfBundleIds={activeOkfBundleIds}
         onToggleOkfBundle={handleToggleOkfBundle}
         slashCommands={[
+          { name: "sleep", description: "Review memory now; use /sleep apply to update the CTX notes", promptTemplate: "/sleep" },
           ...plugin.settings.slashCommands.map(cmd => ({
             name: cmd.name,
             description: cmd.description || "",

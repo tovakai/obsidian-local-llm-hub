@@ -27,6 +27,7 @@ import { WORKFLOW_SPECIFICATION } from "src/workflow/workflowSpec";
 import { SKILLS_FOLDER } from "src/types";
 import { handleCommandNode } from "src/workflow/handlers/command";
 import { ScheduledTaskManager } from "src/core/scheduler";
+import { ActivityLog } from "src/core/activityLog";
 import { configureAgentPluginBase } from "obsidian-llm-hub-common/skills";
 
 import { EditHistoryModal } from "src/ui/components/EditHistoryModal";
@@ -92,6 +93,7 @@ export class LocalLlmHubPlugin extends Plugin {
   encryptionManager!: EncryptionManager;
   workflowManager!: WorkflowManager;
   scheduler!: ScheduledTaskManager;
+  activityLog = new ActivityLog(this);
   mcpManager = new McpManager();
   selectionManager!: SelectionManager;
   /** In-memory only – cleared on Obsidian restart */
@@ -356,6 +358,13 @@ export class LocalLlmHubPlugin extends Plugin {
       name: "Open schedules",
       callback: () => { void this.activateChatView("schedule"); },
     });
+    this.addCommand({
+      id: "open-mabel-activity",
+      name: "Open mabel activity",
+      callback: () => {
+        void this.activateChatView("schedule").then(() => this.settingsEmitter.emit("mabel-open-activity"));
+      },
+    });
 
     // Text processing commands
     this.addCommand({
@@ -570,6 +579,7 @@ export class LocalLlmHubPlugin extends Plugin {
   onunload(): void {
     this.workflowManager.cleanup();
     this.scheduler?.stop();
+    this.activityLog.stop();
     cryptoCache.clear();
     void this.mcpManager.disconnectAll();
   }
@@ -578,6 +588,7 @@ export class LocalLlmHubPlugin extends Plugin {
     const data = await this.loadData() as Partial<LocalLlmHubSettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
     if (!Array.isArray(this.settings.scheduledTasks)) this.settings.scheduledTasks = [];
+    if (!Array.isArray(this.settings.activityEvents)) this.settings.activityEvents = [];
     for (const task of this.settings.scheduledTasks) {
       if (task.lastStatus === "running") {
         task.lastStatus = "failed";

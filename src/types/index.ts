@@ -7,6 +7,7 @@ export type { McpServerConfig, McpTransport, McpFraming } from "obsidian-llm-hub
 export type { Message, ToolCall, ToolResult, Attachment, RagCitation } from "obsidian-llm-hub-common/chat";
 import type { WorkflowEventTrigger } from "obsidian-llm-hub-common/workflow";
 import type { ScheduledTask } from "../core/scheduler";
+import type { ActivityEvent } from "../core/activityLog";
 
 export type { ObsidianEventType, WorkflowEventTrigger } from "obsidian-llm-hub-common/workflow";
 // Supported LLM frameworks
@@ -227,6 +228,10 @@ export interface LocalLlmHubSettings {
   enabledWorkflowEventTriggers: WorkflowEventTrigger[];
   /** Locally scheduled reminders and tool-free model prompts. */
   scheduledTasks: ScheduledTask[];
+  /** Bounded, persisted, metadata-only activity stream. */
+  activityEvents: ActivityEvent[];
+  /** Last successfully completed auto-applied memory sleep checkpoint. */
+  lastSleepAt?: number;
   /** Vault-relative folder used for plugin-generated data. */
   workspaceFolder: string;
   /** Vault-relative folder containing user-installed skills. */
@@ -292,6 +297,7 @@ export const DEFAULT_SETTINGS: LocalLlmHubSettings = {
   enabledWorkflowHotkeys: [],
   enabledWorkflowEventTriggers: [],
   scheduledTasks: [],
+  activityEvents: [],
   workspaceFolder: WORKSPACE_FOLDER,
   skillsFolder: SKILLS_FOLDER,
   hideWorkspaceFolder: true,

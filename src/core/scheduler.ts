@@ -2,8 +2,9 @@ import { Notice } from "obsidian";
 import { randomUUID } from "node:crypto";
 import type { LocalLlmHubPlugin } from "../plugin";
 import { runScheduledAgent, type ScheduledToolAudit } from "./scheduledAgent";
+import { runSleep } from "./sleep";
 
-export type ScheduleKind = "reminder" | "prompt";
+export type ScheduleKind = "reminder" | "prompt" | "sleep";
 export type ScheduleRepeat = "once" | "daily" | "weekly" | "interval";
 export type ScheduleStatus = "running" | "success" | "failed";
 
@@ -19,6 +20,8 @@ export interface ScheduledTask {
   allowTools?: boolean;
   /** Separately allow connected MCP tools (which may execute commands). Defaults to false. */
   allowMcpTools?: boolean;
+  /** Memory sleep may update only the five CTX context files. */
+  autoApplySleep?: boolean;
   /** Original local-wall-clock anchor, stored as a Unix millisecond timestamp. */
   startsAt: number;
   nextRunAt: number | null;
@@ -30,7 +33,7 @@ export interface ScheduledTask {
   lastError?: string;
 }
 
-export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt" | "allowTools" | "allowMcpTools">;
+export type TaskDraft = Pick<ScheduledTask, "title" | "prompt" | "kind" | "repeat" | "intervalMinutes" | "startsAt" | "allowTools" | "allowMcpTools" | "autoApplySleep">;
 
 /**
  * Find the next occurrence strictly AFTER the supplied instant.
@@ -67,7 +70,7 @@ export function validateTask(draft: TaskDraft): TaskDraft {
   const prompt = draft.prompt.trim();
   if (!title || title.length > 120) throw new Error("Give the task a title (up to 120 characters).");
   if (!prompt || prompt.length > 15_000) throw new Error("Enter a prompt or reminder (up to 15,000 characters).");
-  if (draft.kind !== "reminder" && draft.kind !== "prompt") throw new Error("Invalid task type.");
+  if (draft.kind !== "reminder" && draft.kind !== "prompt" && draft.kind !== "sleep") throw new Error("Invalid task type.");
   if (!["once", "daily", "weekly", "interval"].includes(draft.repeat)) throw new Error("Invalid repeat setting.");
   if (!Number.isFinite(draft.startsAt)) throw new Error("Choose a valid date and time.");
   if (draft.repeat === "interval" && (!Number.isInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 10_080)) {
@@ -76,6 +79,7 @@ export function validateTask(draft: TaskDraft): TaskDraft {
   return { ...draft, title, prompt, intervalMinutes: draft.repeat === "interval" ? draft.intervalMinutes : 60,
     allowTools: draft.kind === "prompt" && draft.allowTools === true,
     allowMcpTools: draft.kind === "prompt" && draft.allowTools === true && draft.allowMcpTools === true,
+    autoApplySleep: draft.kind === "sleep" && draft.autoApplySleep === true,
   };
 }
 
@@ -245,8 +249,16 @@ export class ScheduledTaskManager {
     return path;
   }
 
-  private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[]): Promise<string> {
-    return runScheduledAgent(task, this.plugin, signal, audit);
+  private async generate(task: ScheduledTask, signal: AbortSignal, audit: ScheduledToolAudit[], runId: string): Promise<string> {
+    if (task.kind === "sleep") {
+      const result = await runSleep(this.plugin, signal, task.autoApplySleep === true, task.prompt,
+        (kind, title, path, detail) => this.plugin.activityLog.record({ runId, taskId: task.id, source: "sleep", kind, title, path, detail }));
+      return [result.summary || "Memory review complete.",
+        "Updated: " + result.updated.length + " | Staged: " + result.staged.length,
+        "Conversations: " + result.chatCount, "Report: " + result.reportPath].join("\n\n");
+    }
+    return runScheduledAgent(task, this.plugin, signal, audit,
+      (kind, title, path) => this.plugin.activityLog.record({ runId, taskId: task.id, source: "scheduler", kind, title, path }));
   }
 
   private async execute(task: ScheduledTask, manual: boolean): Promise<void> {
@@ -255,7 +267,10 @@ export class ScheduledTaskManager {
     const controller = new AbortController();
     this.controllers.set(task.id, controller);
     const at = Date.now();
+    const runId = randomUUID();
     const audit: ScheduledToolAudit[] = [];
+    this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+      kind: "run-start", title: task.title, detail: manual ? "Started manually" : "Started on schedule" });
     task.lastRunAt = at;
     task.lastStatus = "running";
     task.lastError = undefined;
@@ -268,10 +283,13 @@ export class ScheduledTaskManager {
       // Reserve the occurrence before invoking the model. This avoids
       // repeated execution if a scheduler tick arrives during a long run.
       await this.persist();
-      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal, audit);
+      const output = task.kind === "reminder" ? task.prompt : await this.generate(task, controller.signal, audit, runId);
       if (this.closed) return;
       task.lastResultPath = await this.logRun(task, at, output, audit);
       task.lastStatus = "success";
+      this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+        kind: "run-complete", title: task.title, detail: task.kind === "reminder" ? "Reminder delivered" : "Finished successfully",
+        path: task.lastResultPath });
       new Notice(task.kind === "reminder"
         ? "Mabel reminder: " + task.title + "\n" + task.prompt.slice(0, 160)
         : "Mabel finished: " + task.title, 9000);
@@ -284,6 +302,8 @@ export class ScheduledTaskManager {
       } catch (loggingError) {
         console.error("[Mabel scheduler] Failed to save execution log:", loggingError);
       }
+      this.plugin.activityLog.record({ runId, taskId: task.id, source: task.kind === "sleep" ? "sleep" : "scheduler",
+        kind: "run-error", title: task.title, detail: task.lastError?.slice(0, 250), path: task.lastResultPath });
       new Notice("Mabel schedule failed: " + task.title, 7500);
     } finally {
       this.inProgress.delete(task.id);
