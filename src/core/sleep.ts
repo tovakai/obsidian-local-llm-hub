@@ -104,13 +104,16 @@ export function userOnlyTranscript(markdown: string, maxChars: number): string {
 }
 
 function reviewed(text: string): string {
-  return text.replace(/^last-reviewed:.*$/m, "last-reviewed: " + new Date().toISOString().slice(0, 10));
+  const date = new Date().toISOString().slice(0, 10);
+  if (/^last-reviewed:/m.test(text)) return text.replace(/^last-reviewed:.*$/m, "last-reviewed: " + date);
+  if (text.startsWith("---\n")) return text.replace(/^---\n/, "---\nlast-reviewed: " + date + "\n");
+  return "---\nlast-reviewed: " + date + "\n---\n" + text;
 }
 
 function fileStamp(): string { return new Date().toISOString().replace(/[:.]/g, "-"); }
 
 /** Only CTX files may be modified; originals and old curated notes are read-only. */
-export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, autoApply = false): Promise<SleepResult> {
+export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, autoApply = false, objective = ""): Promise<SleepResult> {
   const app = plugin.app;
   const originals = await contexts(app);
   if (signal.aborted) throw new Error("Sleep cancelled.");
@@ -154,6 +157,7 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
     "CURRENT CONTEXT:\n" + CONTEXT_FILES.map(f => "=== " + f.name + " ===\n" + originals[f.name].slice(0, 8000)).join("\n\n"),
     "OTHER CURATED MEMORY (REFERENCE ONLY; NEVER WRITE THESE):\n" + (legacy.join("\n\n") || "(none)"),
     "NEW USER MESSAGE SOURCES:\n" + (snippets.join("\n\n") || "(none)"),
+    "REQUESTED FOCUS (subject to evidence and scope rules):\n" + objective.slice(0, 1000),
   ].join("\n\n");
   let raw = "";
   for await (const chunk of localLlmChatStream(model,
