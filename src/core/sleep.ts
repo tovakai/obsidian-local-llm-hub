@@ -3,6 +3,7 @@ import { TFile, type App } from "obsidian";
 import { parseMarkdownToMessages } from "obsidian-llm-hub-common/chat";
 import { localLlmChatStream } from "./localLlmProvider";
 import type { LocalLlmHubPlugin } from "../plugin";
+import type { ActivityKind } from "./activityLog";
 
 export const CONTEXT_ROOT = "Mabel/Memory/Context";
 export const SLEEP_ROOT = "Mabel/Memory/Sleep";
@@ -113,7 +114,10 @@ function reviewed(text: string): string {
 function fileStamp(): string { return new Date().toISOString().replace(/[:.]/g, "-"); }
 
 /** Only CTX files may be modified; originals and old curated notes are read-only. */
-export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, autoApply = false, objective = ""): Promise<SleepResult> {
+export async function runSleep(
+  plugin: LocalLlmHubPlugin, signal: AbortSignal, autoApply = false, objective = "",
+  onActivity?: (kind: ActivityKind, title: string, path?: string, detail?: string) => void,
+): Promise<SleepResult> {
   const app = plugin.app;
   const originals = await contexts(app);
   if (signal.aborted) throw new Error("Sleep cancelled.");
@@ -131,6 +135,8 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
     snippets.push("[" + id + "] " + chats[i].path + "\n" + content);
     remaining -= content.length;
   }
+
+  onActivity?.("memory-scan", "Reviewed saved conversations", undefined, String(snippets.length) + " conversations selected");
 
   const legacy: string[] = [];
   for (const path of ["Mabel/Memory/User.md", "Mabel/Memory/Preferences.md", "Mabel/Memory/Projects.md"]) {
@@ -181,6 +187,7 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
     for (const item of proposals) {
       if (signal.aborted) throw new Error("Sleep cancelled.");
       await app.vault.create(backupDir + "/" + item.file, originals[item.file]);
+      onActivity?.("memory-backup", "Backed up " + item.file, backupDir + "/" + item.file);
     }
   }
   for (const item of proposals) {
@@ -191,7 +198,11 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
       if (!(file instanceof TFile)) throw new Error("Context target disappeared: " + path);
       await app.vault.modify(file, reviewed(item.content));
       updated.push(path);
-    } else staged.push(path);
+      onActivity?.("memory-change", "Updated " + item.file, path);
+    } else {
+      staged.push(path);
+      onActivity?.("memory-preview", "Proposed " + item.file, path);
+    }
   }
   const reportPath = SLEEP_ROOT + "/Reports/" + stamp + ".md";
   const report = [
@@ -219,6 +230,7 @@ export async function runSleep(plugin: LocalLlmHubPlugin, signal: AbortSignal, a
     ...(chats.length ? chats.map(f => "- " + f.path) : ["None"]), "",
   ].join("\n");
   await app.vault.create(reportPath, report);
+  onActivity?.("memory-report", "Sleep report written", reportPath);
   if (autoApply) {
     plugin.settings.lastSleepAt = Date.now();
     await plugin.saveSettings();
