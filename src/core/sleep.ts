@@ -18,7 +18,8 @@ type ContextName = typeof CONTEXT_FILES[number]["name"];
 export const CONTEXT_PATHS = CONTEXT_FILES.map(f => CONTEXT_ROOT + "/" + f.name);
 const validNames = new Set<string>(CONTEXT_FILES.map(f => f.name));
 
-interface SleepUpdate { file: ContextName; content: string; sources: string[]; reason: string; }
+export interface SleepEvidence { line: string; source: string; quote: string; }
+interface SleepUpdate { file: ContextName; content: string; sources: string[]; reason: string; evidence: SleepEvidence[]; }
 export interface SleepPlan { updates: SleepUpdate[]; questions: string[]; summary: string; }
 export interface SleepResult { reportPath: string; summary: string; updated: string[]; staged: string[]; chatCount: number; }
 
@@ -51,6 +52,14 @@ export function parseSleepPlan(raw: string, sourceIds: Set<string>): SleepPlan {
       content: row.content.trim() + "\n",
       sources: [...new Set(sources)],
       reason: typeof row.reason === "string" ? row.reason.slice(0, 400) : "",
+      evidence: Array.isArray(row.evidence) ? row.evidence.flatMap((entry): SleepEvidence[] => {
+        if (!entry || typeof entry !== "object") return [];
+        const e = entry as Record<string, unknown>;
+        return typeof e.line === "string" && typeof e.source === "string" && typeof e.quote === "string"
+          && sourceIds.has(e.source)
+          ? [{ line: e.line.slice(0, 500), source: e.source, quote: e.quote.slice(0, 600) }]
+          : [];
+      }) : [],
     });
   }
   return {
@@ -58,6 +67,55 @@ export function parseSleepPlan(raw: string, sourceIds: Set<string>): SleepPlan {
     questions: value.questions.filter((q): q is string => typeof q === "string").slice(0, 12).map(q => q.slice(0, 400)),
     summary: typeof value.summary === "string" ? value.summary.slice(0, 1500) : "",
   };
+}
+
+/**
+ * A source ID alone is not evidence. Require a matching user-authored quote
+ * for every new factual bullet before letting a run auto-apply changes.
+ * This is lexical validation, not independent semantic fact-checking.
+ */
+function normalized(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+export function factualBullets(markdown: string): string[] {
+  const stripped = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+  return stripped.split(/\r?\n/).map(line => line.trim()).filter(line =>
+    /^[-*]\s+\S/.test(line) && !/^[-*]\s+(?:No confirmed facts yet|Nothing confirmed yet)\.?$/i.test(line)
+  );
+}
+
+export function evaluateSleepEvidence(
+  plan: SleepPlan,
+  existing: Partial<Record<ContextName, string>>,
+  userSources: Map<string, string>,
+  maxAutoFiles = 2,
+): { safe: boolean; issues: string[] } {
+  const issues: string[] = [];
+  if (plan.updates.length > maxAutoFiles) {
+    issues.push("Changes span " + plan.updates.length + " context files, exceeding the " + maxAutoFiles + "-file automatic limit.");
+  }
+  for (const update of plan.updates) {
+    const previous = factualBullets(existing[update.file] || "");
+    const after = factualBullets(update.content);
+    const old = new Set(previous.map(normalized));
+    const next = new Set(after.map(normalized));
+    const introduced = after.filter(line => !old.has(normalized(line)));
+    const removed = previous.filter(line => !next.has(normalized(line)));
+    // Removal/rewriting requires human review until we have a trustworthy
+    // correction-specific proof chain. Never silently erase curated knowledge.
+    if (removed.length) issues.push(update.file + ": " + removed.length + " existing factual bullets would be removed or replaced.");
+    for (const line of introduced) {
+      const supported = update.evidence.some(proof =>
+        normalized(proof.line) === normalized(line)
+        && proof.quote.trim().length >= 12
+        && (userSources.has(proof.source))
+        && normalized(userSources.get(proof.source) || "").includes(normalized(proof.quote))
+      );
+      if (!supported) issues.push(update.file + ": no exact user-message quotation supporting " + line.slice(0, 100));
+    }
+  }
+  return { safe: issues.length === 0, issues };
 }
 
 async function ensureFolder(app: App, path: string): Promise<void> {
@@ -124,6 +182,7 @@ export async function runSleep(
   const chatFolder = (plugin.settings.workspaceFolder || "LocalLlmHub") + "/chats";
   const chats = selectSleepChatFiles(app.vault.getMarkdownFiles(), chatFolder, plugin.settings.lastSleepAt || 0);
   const sourceIds = new Set<string>();
+  const sourceTexts = new Map<string, string>();
   const snippets: string[] = [];
   let remaining = 30_000;
   for (let i = 0; i < chats.length; i++) {
@@ -132,6 +191,7 @@ export async function runSleep(
     if (!content.trim()) continue;
     const id = "CHAT-" + String(i + 1).padStart(2, "0");
     sourceIds.add(id);
+    sourceTexts.set(id, content);
     snippets.push("[" + id + "] " + chats[i].path + "\n" + content);
     remaining -= content.length;
   }
@@ -156,6 +216,10 @@ export async function runSleep(
     "Only change files that genuinely need it. Preserve existing facts, headings and wikilinks.",
     "Return ONLY JSON with shape: {\"updates\":[{\"file\":\"CTX-now.md\",\"content\":\"FULL updated markdown\",\"sources\":[\"CHAT-01\"],\"reason\":\"...\"}],\"questions\":[\"...\"],\"summary\":\"...\"}.",
     "Use ONLY the five known CTX filenames, and source IDs from the supplied USER messages.",
+    "For EVERY added or changed factual bullet, supply evidence[] with its EXACT bullet line, source ID and a verbatim quote copied from that user's message.",
+    "Quotes must come from NEW USER MESSAGE SOURCES, not the existing CTX notes or OTHER CURATED MEMORY.",
+    "Other curated notes are orientation only: do NOT copy their facts to previously empty CTX files unless the user directly provided supporting evidence in the supplied chat.",
+    "Do not update all five context files just because they are empty. Only touch files affected by a specific recent user statement.",
     "If there are no new user messages, return updates: [].",
   ].join("\n");
   const input = [
@@ -176,14 +240,17 @@ export async function runSleep(
   if (signal.aborted) throw new Error("Sleep cancelled.");
   const plan = parseSleepPlan(raw, sourceIds);
   const proposals = plan.updates.filter(u => originals[u.file].trim() !== u.content.trim());
+  const proposedPlan = { ...plan, updates: proposals };
+  const evidenceReview = evaluateSleepEvidence(proposedPlan, originals, sourceTexts);
+  const applyApproved = autoApply && evidenceReview.safe;
   await ensureFolder(app, SLEEP_ROOT + "/Reports");
   const stamp = fileStamp();
   const backupDir = SLEEP_ROOT + "/Backups/" + stamp;
   const updated: string[] = [];
   const staged: string[] = [];
-  if (autoApply && proposals.length) await ensureFolder(app, backupDir);
+  if (applyApproved && proposals.length) await ensureFolder(app, backupDir);
   // Validate the complete plan before any modifications. Back up every file first.
-  if (autoApply) {
+  if (applyApproved) {
     for (const item of proposals) {
       if (signal.aborted) throw new Error("Sleep cancelled.");
       await app.vault.create(backupDir + "/" + item.file, originals[item.file]);
@@ -192,7 +259,7 @@ export async function runSleep(
   }
   for (const item of proposals) {
     const path = CONTEXT_ROOT + "/" + item.file;
-    if (autoApply) {
+    if (applyApproved) {
       if (signal.aborted) throw new Error("Sleep cancelled.");
       const file = app.vault.getAbstractFileByPath(path);
       if (!(file instanceof TFile)) throw new Error("Context target disappeared: " + path);
@@ -207,7 +274,8 @@ export async function runSleep(
   const reportPath = SLEEP_ROOT + "/Reports/" + stamp + ".md";
   const report = [
     "# Mabel sleep: " + new Date().toLocaleString(), "",
-    "- Mode: " + (autoApply ? "Auto-applied" : "Preview only"),
+    "- Mode: " + (applyApproved ? "Auto-applied" : autoApply ? "Automatic apply blocked (preview only)" : "Preview only"),
+    ...(autoApply && !applyApproved ? ["- Safeguard: Could not prove all proposed changes from user-authored messages.", ...evidenceReview.issues.map(issue => "  - " + issue.replace(/[\r\n]+/g, " "))] : []),
     "- User-chat sources: " + snippets.length,
     "- Updated: " + updated.length,
     "- Proposed: " + staged.length,
@@ -215,15 +283,18 @@ export async function runSleep(
     "## Changes", "",
     ...(proposals.length ? proposals.flatMap(p => [
       "### " + p.file,
-      "- " + (autoApply ? "Applied" : "Preview only"),
+      "- " + (applyApproved ? "Applied" : "Preview only"),
       "- Reason: " + p.reason.replace(/[\r\n]/g, " "),
       "- Evidence: " + p.sources.map(id => {
         const file = chats[Number(id.slice(5)) - 1];
         return id + (file ? " (" + file.path + ")" : "");
       }).join(", "),
-      ...(autoApply ? ["- Backup: " + backupDir + "/" + p.file] : []),
-      "", ...(autoApply ? [] : ["~~~markdown", p.content, "~~~", ""]),
+      ...(applyApproved ? ["- Backup: " + backupDir + "/" + p.file] : []),
+      "", ...(applyApproved ? [] : ["~~~markdown", p.content, "~~~", ""]),
     ]) : ["None", ""]),
+    "## Evidence excerpts", "",
+    ...proposals.flatMap(u => u.evidence.map(proof => "- " + u.file + " | " + proof.source + " | " + proof.line.replace(/[\r\n]+/g, " ") + " | " + proof.quote.replace(/[\r\n]+/g, " "))),
+    "",
     "## Questions", "",
     ...(plan.questions.length ? plan.questions.map(q => "- [ ] " + q) : ["None"]),
     "", "## Source conversations", "",
@@ -231,7 +302,7 @@ export async function runSleep(
   ].join("\n");
   await app.vault.create(reportPath, report);
   onActivity?.("memory-report", "Sleep report written", reportPath);
-  if (autoApply) {
+  if (applyApproved) {
     plugin.settings.lastSleepAt = Date.now();
     await plugin.saveSettings();
   }
