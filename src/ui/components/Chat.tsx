@@ -726,16 +726,24 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   // Send message
   const sendMessage = useCallback(async (content: string, attachments?: Attachment[], skillPath?: string) => {
     userInteractedRef.current = true;
-    const sleepCommand = content.trim().match(/^\/sleep(?:\s+(apply))?$/i);
+    const sleepCommand = content.trim().match(/^\\/sleep(?:\\s+(apply))?$/i);
     if (sleepCommand) {
       const autoApply = Boolean(sleepCommand[1]);
+      const runId = generateChatId();
+      plugin.activityLog.record({ runId, source: "sleep", kind: "run-start",
+        title: "/sleep", detail: autoApply ? "Manual memory review (auto-apply)" : "Manual memory review (preview)" });
       new Notice("Mabel is reviewing her memories" + (autoApply ? " (auto-apply)" : " (preview)") + "...");
       try {
-        const result = await runSleep(plugin, new AbortController().signal, autoApply);
+        const result = await runSleep(plugin, new AbortController().signal, autoApply, "",
+          (kind, title, path, detail) => plugin.activityLog.record({ runId, source: "sleep", kind, title, path, detail }));
+        plugin.activityLog.record({ runId, source: "sleep", kind: "run-complete",
+          title: "/sleep", detail: result.updated.length + " applied, " + result.staged.length + " staged", path: result.reportPath });
         new Notice("Sleep complete: " + result.updated.length + " applied, " + result.staged.length + " staged.");
         await plugin.app.workspace.openLinkText(result.reportPath, "", false);
       } catch (cause) {
-        new Notice("Sleep failed: " + (cause instanceof Error ? cause.message : String(cause)), 10000);
+        const message = cause instanceof Error ? cause.message : String(cause);
+        plugin.activityLog.record({ runId, source: "sleep", kind: "run-error", title: "/sleep", detail: message.slice(0, 200) });
+        new Notice("Sleep failed: " + message, 10000);
       }
       return;
     }
