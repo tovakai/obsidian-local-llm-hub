@@ -362,8 +362,7 @@ export class LocalLlmHubPlugin extends Plugin {
       id: "open-mabel-activity",
       name: "Open Mabel activity",
       callback: () => {
-        this.settingsEmitter.emit("mabel-open-activity");
-        void this.activateChatView("schedule");
+        void this.activateChatView("schedule").then(() => this.settingsEmitter.emit("mabel-open-activity"));
       },
     });
 
