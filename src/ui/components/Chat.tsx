@@ -24,6 +24,7 @@ import {
   WORKSPACE_FOLDER,
 } from "src/types";
 import { localLlmChatStream } from "src/core/localLlmProvider";
+import { runSleep } from "src/core/sleep";
 import {
   accumulateStreamChunk,
   createStreamAccumulation,
@@ -725,6 +726,19 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
   // Send message
   const sendMessage = useCallback(async (content: string, attachments?: Attachment[], skillPath?: string) => {
     userInteractedRef.current = true;
+    const sleepCommand = content.trim().match(/^\/sleep(?:\s+(apply))?$/i);
+    if (sleepCommand) {
+      const autoApply = Boolean(sleepCommand[1]);
+      new Notice("Mabel is reviewing her memories" + (autoApply ? " (auto-apply)" : " (preview)") + "...");
+      try {
+        const result = await runSleep(plugin, new AbortController().signal, autoApply);
+        new Notice("Sleep complete: " + result.updated.length + " applied, " + result.staged.length + " staged.");
+        await plugin.app.workspace.openLinkText(result.reportPath, "", false);
+      } catch (cause) {
+        new Notice("Sleep failed: " + (cause instanceof Error ? cause.message : String(cause)), 10000);
+      }
+      return;
+    }
     if (!plugin.settings.llmVerified) {
       new Notice(t("chat.llmNotVerified"));
       return;
@@ -1287,6 +1301,7 @@ const Chat = forwardRef<ChatRef, ChatProps>(({ plugin, onToggleSidebarWidth }, r
         activeOkfBundleIds={activeOkfBundleIds}
         onToggleOkfBundle={handleToggleOkfBundle}
         slashCommands={[
+          { name: "sleep", description: "Review memory now; use /sleep apply to update the CTX notes", promptTemplate: "/sleep" },
           ...plugin.settings.slashCommands.map(cmd => ({
             name: cmd.name,
             description: cmd.description || "",
