@@ -3,6 +3,7 @@ import { CalendarClock, Clock3, Plus, Pencil, Play, Pause, Trash2, Sparkles, Bel
 import { Notice } from "obsidian";
 import type { LocalLlmHubPlugin } from "../../plugin";
 import type { ScheduledTask, ScheduleKind, ScheduleRepeat, TaskDraft } from "../../core/scheduler";
+import ActivityPanel from "./ActivityPanel";
 
 interface SchedulePanelProps { plugin: LocalLlmHubPlugin; }
 
@@ -47,6 +48,7 @@ function errorText(cause: unknown): string {
 
 export default function SchedulePanel({ plugin }: SchedulePanelProps) {
   const [tasks, setTasks] = useState<ScheduledTask[]>(() => plugin.scheduler.list());
+  const [section, setSection] = useState<"schedules" | "activity">("schedules");
   const [editing, setEditing] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(newDraft);
@@ -93,6 +95,12 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
     };
     plugin.settingsEmitter.on("schedule-draft", onProposed);
     return () => plugin.settingsEmitter.off("schedule-draft", onProposed);
+  }, [plugin]);
+
+  useEffect(() => {
+    const openActivity = () => setSection("activity");
+    plugin.settingsEmitter.on("mabel-open-activity", openActivity);
+    return () => plugin.settingsEmitter.off("mabel-open-activity", openActivity);
   }, [plugin]);
 
   const sorted = useMemo(() => [...tasks].sort((a, b) => {
@@ -163,6 +171,11 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
 
   return (
     <div className="llm-hub-scheduler">
+      <nav className="llm-hub-scheduler-subnav" aria-label="Mabel automation views">
+        <button type="button" className={section === "schedules" ? "is-active" : ""} onClick={() => setSection("schedules")}><CalendarClock size={14}/> Schedules</button>
+        <button type="button" className={section === "activity" ? "is-active" : ""} onClick={() => setSection("activity")}><Clock3 size={14}/> Activity</button>
+      </nav>
+      {section === "activity" ? <ActivityPanel plugin={plugin} /> : <div className="llm-hub-scheduler-schedules">
       <header className="llm-hub-scheduler-hero">
         <div className="llm-hub-scheduler-eyebrow"><Sparkles size={13} /> MABEL / AUTOMATIONS</div>
         <h2>Time is on her side.</h2>
@@ -329,6 +342,7 @@ export default function SchedulePanel({ plugin }: SchedulePanelProps) {
         </article>
       ))}
       <p className="llm-hub-scheduler-footer"><AlertCircle size={13} /> Schedules run while Obsidian desktop is open. Missed tasks fire once when it reopens; recurring runs do not pile up.</p>
+      </div>}
     </div>
   );
 }
