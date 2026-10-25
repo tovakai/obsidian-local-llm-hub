@@ -69,9 +69,9 @@ describe("Mabel sleep model safety", () => {
   });
   it("requires a verbatim user citation for every newly added factual bullet", () => {
     const plan = parseSleepPlan(JSON.stringify({
-      updates: [{ file: "CTX-systems.md", content: "# Systems\n- Dolphin - media integration\n",
+      updates: [{ file: "CTX-systems.md", content: "# Systems\n- Dolphin - file manager\n",
         sources: ["CHAT-01"], reason: "New tool",
-        evidence: [{ line: "- Dolphin - media integration", source: "CHAT-01", quote: "I use Dolphin as my file manager" }] }],
+        evidence: [{ line: "- Dolphin - file manager", source: "CHAT-01", quote: "I use Dolphin as my file manager" }] }],
       questions: [], summary: "Tooling",
     }), sourceIds);
     const originals = { "CTX-systems.md": "# Systems\n" };
@@ -79,6 +79,14 @@ describe("Mabel sleep model safety", () => {
     // Verbatim quote is correctly recognized, but it does not prove the
     // paraphrase is semantically correct; that's still a limitation.
     expect(evaluateSleepEvidence(plan, originals, quotedUser).safe).toBe(true);
+    const misleading = { ...plan,
+      updates: [{ ...plan.updates[0],
+        content: "# Systems\n- Dolphin - media integration\n",
+        evidence: [{ line: "- Dolphin - media integration",
+          source: "CHAT-01", quote: "I use Dolphin as my file manager" }],
+      }],
+    };
+    expect(evaluateSleepEvidence(misleading, originals, quotedUser).safe).toBe(false);
     expect(evaluateSleepEvidence(plan, originals, new Map([["CHAT-01", "I use Linux"]])).safe).toBe(false);
     expect(evaluateSleepEvidence({
       ...plan, updates: [{ ...plan.updates[0], evidence: [] }],
