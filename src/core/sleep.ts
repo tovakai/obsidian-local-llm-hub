@@ -85,6 +85,24 @@ export function factualBullets(markdown: string): string[] {
   );
 }
 
+function relevantTerms(text: string): string[] {
+  const normalizedText = text.toLocaleLowerCase()
+    .replace(/\[\[([^|\]]+)(?:\|([^\]]+))?\]\]/g, "$2 $1")
+    .replace(/[^a-zà-ž0-9]+/gi, " ");
+  const stop = new Set(["the", "and", "this", "that", "with", "from", "have", "been", "will",
+    "your", "their", "there", "here", "when", "what", "where", "which", "about", "just", "into"]);
+  return normalizedText.split(/\s+/).filter(word => word.length >= 3 && !stop.has(word));
+}
+
+/** Lightweight lexical sanity check, not a fact-checker. */
+function overlapsQuote(line: string, quote: string): boolean {
+  const claim = [...new Set(relevantTerms(line.replace(/^\s*[-*]\s+/, "")))];
+  const spoken = new Set(relevantTerms(quote));
+  if (!claim.length) return false;
+  const shared = claim.filter(word => spoken.has(word)).length;
+  return shared >= Math.max(1, Math.ceil(claim.length / 2));
+}
+
 export function evaluateSleepEvidence(
   plan: SleepPlan,
   existing: Partial<Record<ContextName, string>>,
@@ -111,6 +129,7 @@ export function evaluateSleepEvidence(
         && proof.quote.trim().length >= 12
         && (userSources.has(proof.source))
         && normalized(userSources.get(proof.source) || "").includes(normalized(proof.quote))
+        && overlapsQuote(line, proof.quote)
       );
       if (!supported) issues.push(update.file + ": no exact user-message quotation supporting " + line.slice(0, 100));
     }
